@@ -195,7 +195,14 @@ async fn main() -> Result<()> {
     });
 
     // Run the task
-    let result = runner::run(config, state, state_path.clone(), shutdown_rx).await;
+    let result = runner::run(
+        config,
+        state,
+        state_path.clone(),
+        cli.tasks_dir.clone(),
+        shutdown_rx,
+    )
+    .await;
 
     // Check if task completed successfully
     if result.is_ok() {

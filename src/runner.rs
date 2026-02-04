@@ -15,6 +15,7 @@ pub async fn run(
     config: Config,
     state: State,
     state_path: PathBuf,
+    tasks_dir: PathBuf,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 ) -> Result<()> {
     let config = Arc::new(config);
@@ -67,6 +68,7 @@ pub async fn run(
         state_path.clone(),
         Arc::clone(&config),
         working_dir.clone(),
+        tasks_dir,
     );
 
     // Close senders so workers know when to stop

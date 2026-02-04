@@ -5,7 +5,10 @@ use crate::process::{expand_pattern, parse_result, run_command};
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
 use async_channel::Receiver;
-use std::path::PathBuf;
+use chrono::Utc;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -19,6 +22,7 @@ pub fn spawn_verify_pool(
     state_path: PathBuf,
     config: Arc<Config>,
     working_dir: PathBuf,
+    tasks_dir: PathBuf,
 ) -> Vec<JoinHandle<()>> {
     (0..concurrency)
         .map(|worker_id| {
@@ -27,12 +31,52 @@ pub fn spawn_verify_pool(
             let state_path = state_path.clone();
             let config = Arc::clone(&config);
             let working_dir = working_dir.clone();
+            let tasks_dir = tasks_dir.clone();
 
             tokio::spawn(async move {
-                verify_worker(worker_id, rx, state, state_path, config, working_dir).await;
+                verify_worker(
+                    worker_id,
+                    rx,
+                    state,
+                    state_path,
+                    config,
+                    working_dir,
+                    tasks_dir,
+                )
+                .await;
             })
         })
         .collect()
+}
+
+/// Append a message to the failure log for a file
+fn append_to_failure_log(tasks_dir: &Path, file_path: &Path, message: &str) {
+    let failures_dir = tasks_dir.join("failures");
+    if let Err(e) = fs::create_dir_all(&failures_dir) {
+        error!(error = %e, "Failed to create failures directory");
+        return;
+    }
+
+    // Create log filename from the source file path
+    let log_name = file_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let log_path = failures_dir.join(format!("{}.log", log_name));
+
+    let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+
+    match OpenOptions::new().create(true).append(true).open(&log_path) {
+        Ok(mut file) => {
+            let separator = "=".repeat(80);
+            if let Err(e) = writeln!(file, "\n{}\n[{}]\n{}", separator, timestamp, message) {
+                error!(error = %e, "Failed to write to failure log");
+            }
+        }
+        Err(e) => {
+            error!(error = %e, path = %log_path.display(), "Failed to open failure log");
+        }
+    }
 }
 
 async fn verify_worker(
@@ -42,6 +86,7 @@ async fn verify_worker(
     state_path: PathBuf,
     config: Arc<Config>,
     working_dir: PathBuf,
+    tasks_dir: PathBuf,
 ) {
     let verification_cmd = match &config.verification_cmd {
         Some(cmd) => cmd.clone(),
@@ -150,6 +195,20 @@ async fn verify_worker(
                 state.increment_attempts(&task.path);
             }
 
+            // Build error message for logging
+            let error_output = if result.stderr.is_empty() {
+                &result.stdout
+            } else {
+                &result.stderr
+            };
+
+            // Log verification failure
+            let failure_msg = format!(
+                "VERIFICATION FAILED (attempt {}/{})\nCommand: {}\nExit code: {}\n\nOutput:\n{}",
+                attempts, config.max_retries, cmd, result.exit_code, error_output
+            );
+            append_to_failure_log(&tasks_dir, &task.path, &failure_msg);
+
             if attempts >= config.max_retries {
                 // Max retries reached
                 warn!(
@@ -159,14 +218,16 @@ async fn verify_worker(
                     "Verification FAILED after max retries"
                 );
 
+                // Log final failure
+                append_to_failure_log(
+                    &tasks_dir,
+                    &task.path,
+                    "FINAL STATUS: FAILED after max retries",
+                );
+
                 let mut state = state.lock().await;
                 state.update_status(&task.path, FileStatus::Failed);
-                let error_msg = if result.stderr.is_empty() {
-                    result.stdout.clone()
-                } else {
-                    result.stderr.clone()
-                };
-                state.set_error(&task.path, error_msg);
+                state.set_error(&task.path, error_output.clone());
                 if let Err(e) = state.save(&state_path) {
                     error!(error = %e, "Failed to save state");
                 }
@@ -195,12 +256,6 @@ async fn verify_worker(
                 .as_deref()
                 .unwrap_or("Fix the issues with the file");
 
-            let error_output = if result.stderr.is_empty() {
-                &result.stdout
-            } else {
-                &result.stderr
-            };
-
             let fixup_prompt = build_fixup_prompt(
                 fixup_prompt_base,
                 &task.path,
@@ -208,9 +263,23 @@ async fn verify_worker(
                 &config.allowlist_pattern,
             );
 
+            // Log the fixup prompt being sent
+            append_to_failure_log(
+                &tasks_dir,
+                &task.path,
+                &format!("FIXUP PROMPT SENT:\n{}", fixup_prompt),
+            );
+
             // Run fixup
             match run_claude(&fixup_prompt, &working_dir).await {
                 Ok(output) => {
+                    // Log Claude's response
+                    let response_log = format!(
+                        "CLAUDE FIXUP RESPONSE:\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                        output.stdout, output.stderr
+                    );
+                    append_to_failure_log(&tasks_dir, &task.path, &response_log);
+
                     // Parse and update result
                     let parsed = parse_result(&output.stdout);
                     {
@@ -233,6 +302,14 @@ async fn verify_worker(
                         error = %e,
                         "Fixup failed"
                     );
+
+                    // Log fixup failure
+                    append_to_failure_log(
+                        &tasks_dir,
+                        &task.path,
+                        &format!("FIXUP COMMAND FAILED: {}", e),
+                    );
+
                     // Mark as failed
                     let mut state = state.lock().await;
                     state.update_status(&task.path, FileStatus::Failed);
