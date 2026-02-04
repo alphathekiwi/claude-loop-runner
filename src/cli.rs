@@ -34,23 +34,57 @@ pub struct Cli {
     #[arg(short, long, default_value = "{file_stem}*")]
     pub allowlist: String,
 
-    /// State file path for persistence and resume
-    #[arg(short, long, default_value = "./claude-loop-runner.state.json")]
-    pub state: PathBuf,
+    /// Tasks directory for state files and task list
+    #[arg(short = 'd', long, default_value = "./claude-loop-tasks")]
+    pub tasks_dir: PathBuf,
 
-    /// Resume from existing state file
+    /// Resume a specific task by ID, or all incomplete tasks if not specified
     #[arg(long)]
-    pub resume: bool,
+    pub resume: Option<Option<String>>,
 
     /// Maximum number of fixup retry attempts
     #[arg(long, default_value = "3")]
     pub max_retries: u32,
+
+    /// Working directory for the task (defaults to current directory)
+    #[arg(short = 'w', long)]
+    pub working_dir: Option<PathBuf>,
+
+    /// Dry run: create task config but don't run any Claude CLIs
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Enable git features (capture dirty files, optionally branch/commit)
+    #[arg(long)]
+    pub git: bool,
+
+    /// Automatically create a branch for this task (implies --git)
+    #[arg(long)]
+    pub git_branch: bool,
+
+    /// Automatically commit after each file completes (implies --git)
+    #[arg(long)]
+    pub git_commit: bool,
+
+    /// Custom commit message template (supports {file}, {file_stem}, {task_id})
+    #[arg(long)]
+    pub git_commit_message: Option<String>,
 }
 
 impl Cli {
+    /// Check if we're in resume mode
+    pub fn is_resume(&self) -> bool {
+        self.resume.is_some()
+    }
+
+    /// Get the specific task ID to resume, if any
+    pub fn resume_task_id(&self) -> Option<&str> {
+        self.resume.as_ref().and_then(|o| o.as_deref())
+    }
+
     /// Validate that required arguments are present when not resuming
     pub fn validate(&self) -> anyhow::Result<()> {
-        if !self.resume {
+        if !self.is_resume() {
             if self.input.is_none() {
                 anyhow::bail!("--input is required when not using --resume");
             }

@@ -2,6 +2,23 @@ use crate::cli::Cli;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Git-related configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GitConfig {
+    /// Enable git features (branch creation, commits)
+    #[serde(default)]
+    pub enabled: bool,
+    /// Automatically create a branch for this task
+    #[serde(default)]
+    pub auto_branch: bool,
+    /// Automatically commit after each file completes successfully
+    #[serde(default)]
+    pub auto_commit: bool,
+    /// Custom commit message template (supports {file}, {file_stem}, {task_id})
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_message_template: Option<String>,
+}
+
 /// Configuration for the runner, persisted in state file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -24,6 +41,9 @@ pub struct Config {
     pub max_files: Option<usize>,
     /// Maximum fixup retry attempts
     pub max_retries: u32,
+    /// Git configuration
+    #[serde(default)]
+    pub git: GitConfig,
 }
 
 impl Config {
@@ -38,6 +58,13 @@ impl Config {
             .clone()
             .ok_or_else(|| anyhow::anyhow!("--prompt is required"))?;
 
+        let git = GitConfig {
+            enabled: cli.git,
+            auto_branch: cli.git_branch,
+            auto_commit: cli.git_commit,
+            commit_message_template: cli.git_commit_message.clone(),
+        };
+
         Ok(Self {
             input_file,
             prompt,
@@ -47,6 +74,7 @@ impl Config {
             concurrency: cli.concurrency,
             max_files: cli.max_files,
             max_retries: cli.max_retries,
+            git,
         })
     }
 
@@ -79,6 +107,19 @@ impl Config {
         // Only override max_retries if not default
         if cli.max_retries != 3 {
             self.max_retries = cli.max_retries;
+        }
+        // Override git settings if explicitly enabled
+        if cli.git {
+            self.git.enabled = true;
+        }
+        if cli.git_branch {
+            self.git.auto_branch = true;
+        }
+        if cli.git_commit {
+            self.git.auto_commit = true;
+        }
+        if let Some(ref msg) = cli.git_commit_message {
+            self.git.commit_message_template = Some(msg.clone());
         }
         self
     }

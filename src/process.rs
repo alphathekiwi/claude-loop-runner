@@ -85,8 +85,7 @@ pub fn matches_allowlist(path: &Path, pattern: &str) -> bool {
     let path_str = path.to_string_lossy();
 
     // Handle patterns ending with *
-    if pattern.ends_with('*') {
-        let prefix = &pattern[..pattern.len() - 1];
+    if let Some(prefix) = pattern.strip_suffix('*') {
         // Check if any component of the path starts with the prefix
         for component in path.components() {
             if let std::path::Component::Normal(s) = component {

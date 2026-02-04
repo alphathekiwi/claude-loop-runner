@@ -1,0 +1,1796 @@
+{
+    "config": {
+        "input_file": "/workspaces/content-hub/ch-client/coverage/files.json",
+        "prompt": "Improve the test coverage for this React/TypeScript file.\n\n**Read TEST_STYLE_GUIDE.md first** for the project's testing conventions.\n\nTech stack: Vitest, React Testing Library, userEvent, vi (not jest).\n\nYour task:\n1. Read the source file to understand its functionality\n2. Read TEST_STYLE_GUIDE.md for conventions\n3. Read any existing test file (colocated as Component.test.tsx)\n4. Add new test cases to improve coverage:\n   - Untested branches and edge cases\n   - Error handling paths  \n   - Component rendering with different props\n   - User interactions\n   - Mocked API calls where needed\n\nThe current coverage is in original_data. Write meaningful tests, not just for coverage numbers.",
+        "fixup_prompt": "The tests failed. Review the error and fix:\n- Missing mocks for dependencies\n- Incorrect assertions\n- Async issues (use waitFor, findBy)\n- Missing act() wrappers\n\nRefer to TEST_STYLE_GUIDE.md for patterns.",
+        "verification_cmd": "cd /workspaces/content-hub/ch-client && npm run test:coverage -- --reporter=json --outputFile=coverage/test-result.json {file} 2>&1 && node coverage/verification.js {file}",
+        "allowlist_pattern": "{file_stem}*",
+        "concurrency": 3,
+        "max_files": 10,
+        "max_retries": 2
+    },
+    "files": {
+        "src/api-calls/ai/ai.ts": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/components/Tooltips/DOMIndependentTooltip/utils.ts": {
+            "status": "pending",
+            "original_data": 62,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Configs/SetEndTimeConfig.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/components/shadcn/context-menu.tsx": {
+            "status": "pending",
+            "original_data": 81,
+            "attempts": 0
+        },
+        "src/hooks/webrtcVideo/useStandardSubscriptionWorkflow.ts": {
+            "status": "pending",
+            "original_data": 5,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Managers/SessionManager.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/Cms/ReviewAI.tsx": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/containers/Multiviewer/ControlBar/ControlBar.tsx": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/LowLatency/LowLatencyVideoPipelines.tsx": {
+            "status": "pending",
+            "original_data": 73,
+            "attempts": 0
+        },
+        "src/containers/AiAvatarStudio/AiSpeakers.tsx": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/StreamStatus/StreamDetails.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/hooks/useAuthedUser.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Utils/throughput.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Cms/VersionSwitcher/VersionTable.tsx": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/Cms/SmsConfig.tsx": {
+            "status": "pending",
+            "original_data": 60,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/DesktopAppOutOfDate.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Components/UsageStaticIPsTable.tsx": {
+            "status": "pending",
+            "original_data": 77,
+            "attempts": 0
+        },
+        "src/containers/Upload/copyEventFunctions.ts": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/components/shadcn/carousel.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/DashboardTableBody.tsx": {
+            "status": "pending",
+            "original_data": 81,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Managers/SessionManager2.tsx": {
+            "status": "pending",
+            "original_data": 65,
+            "attempts": 0
+        },
+        "src/hooks/webrtcVideo/useStandardWebRTC.ts": {
+            "status": "pending",
+            "original_data": 49,
+            "attempts": 0
+        },
+        "src/reducer/studioReducer.ts": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/containers/Cms/Organisations/Organisations.tsx": {
+            "status": "pending",
+            "original_data": 74,
+            "attempts": 0
+        },
+        "src/utils/Middleware/spalkLogger/spalkLogger.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/RedundantConnectionStateIndicators.tsx": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/components/shadcn/sheet.tsx": {
+            "status": "pending",
+            "original_data": 73,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/CommentatorTestOrchestrator/LocalAudioRecorder.ts": {
+            "status": "pending",
+            "original_data": 88,
+            "attempts": 0
+        },
+        "src/api-calls/users/ResetPassword.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/utils/Testing/HookTestComponent.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/utils/DesktopClient/NetworkInterfaceManager.ts": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/api-calls/commentatorTests/commentatorTests.ts": {
+            "status": "pending",
+            "original_data": 83,
+            "attempts": 0
+        },
+        "src/components/shadcn/tabs.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/reducer/aiReducer.ts": {
+            "status": "pending",
+            "original_data": 81,
+            "attempts": 0
+        },
+        "src/hooks/use-mobile.tsx": {
+            "status": "pending",
+            "original_data": 10,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/AudioEqualiserPanel.tsx": {
+            "status": "pending",
+            "original_data": 61,
+            "attempts": 0
+        },
+        "src/components/MultiChannelAudioMixer/DashboardPanel.tsx": {
+            "status": "pending",
+            "original_data": 89,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Managers/StudioAudioProcessingGraph.ts": {
+            "status": "pending",
+            "original_data": 7,
+            "attempts": 0
+        },
+        "src/containers/Bridge/Intercom/Room.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Components/FetchError.tsx": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/LoudnessMeter/LoudnessChart.tsx": {
+            "status": "pending",
+            "original_data": 82,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/Components/CommentaryReviewDialog.tsx": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/InfoDropDown/HelperFunctions.ts": {
+            "status": "pending",
+            "original_data": 80,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/PreampPanel.tsx": {
+            "status": "pending",
+            "original_data": 48,
+            "attempts": 0
+        },
+        "src/containers/Upload/UploadContainer.tsx": {
+            "status": "pending",
+            "original_data": 82,
+            "attempts": 0
+        },
+        "src/components/shadcn/table.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/GraphicalEqualiserPanel/Chart/Overlay/EQPoint.tsx": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/UnableToEstablishConnection.tsx": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/containers/Upload/awsRegions.ts": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Bridge/TeamRow.tsx": {
+            "status": "pending",
+            "original_data": 60,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/AudioLoudnessNormalisationPanel.tsx": {
+            "status": "pending",
+            "original_data": 57,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/duplexVideoSessions.ts": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/reducer/featureFlagsReducer.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamChat.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Multiviewer/hooks/useConnectionCache.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Cms/PremiumInviteCMS.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Pages/UsageDashboard.tsx": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/containers/Upload/PersistentInputSelect.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/audioworklets/SidechainNoiseGateNode/SidechainNoiseGateWorklet.ts": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/utils/filterTypeEvents.ts": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/fields/utils.ts": {
+            "status": "pending",
+            "original_data": 91,
+            "attempts": 0
+        },
+        "src/containers/Upload/PersistentInputModal.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/PrivacySettings.tsx": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/containers/Cms/BreadcrumbCMS.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/components/Tooltips/DOMIndependentTooltip/components.tsx": {
+            "status": "pending",
+            "original_data": 88,
+            "attempts": 0
+        },
+        "src/containers/Cms/MediaConnectOutputs.tsx": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputIcon.tsx": {
+            "status": "pending",
+            "original_data": 73,
+            "attempts": 0
+        },
+        "src/components/shadcn/badge.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Studio.tsx": {
+            "status": "pending",
+            "original_data": 83,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/BumpersContainer.tsx": {
+            "status": "pending",
+            "original_data": 70,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/OverlayDeviceSelector.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/Settings/Components/ItemArrayManager.tsx": {
+            "status": "pending",
+            "original_data": 71,
+            "attempts": 0
+        },
+        "src/containers/Bridge/Intercom/useRoom.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/AiAvatarStudio/AiJobsResults.tsx": {
+            "status": "pending",
+            "original_data": 72,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Streams/RenderActions.tsx": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/containers/Cms/EditGame.tsx": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/CommentatorTestOrchestrator/NetworkTest/NetworkSpeedTest.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Components/OrganisationsTable.tsx": {
+            "status": "pending",
+            "original_data": 70,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Replayer/MpegtsPlayer.tsx": {
+            "status": "pending",
+            "original_data": 2,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Pages/Developer.tsx": {
+            "status": "pending",
+            "original_data": 69,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Commentators/Components/CommentatorRow/DownloadButton.tsx": {
+            "status": "pending",
+            "original_data": 89,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/DashboardTable.tsx": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/api-calls/users/profile.ts": {
+            "status": "pending",
+            "original_data": 77,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Flags/UpdateNotes.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/CommentatorTestOrchestrator/NetworkTest/UDPTest.ts": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/Cms/EventMediaControl/EventMediaControl.tsx": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/OnBoarding.tsx": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/containers/Cms/UsageDashboardContainer.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck/SoundCheckContainer.tsx": {
+            "status": "pending",
+            "original_data": 82,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/HelperFunctions.ts": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Invite/SuggestionRow.tsx": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/AudioCompressorPanel.tsx": {
+            "status": "pending",
+            "original_data": 60,
+            "attempts": 0
+        },
+        "src/containers/Cms/MarketplaceProfiles/MarketplaceProfilesCMS.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Upload/helperFunctions.ts": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/SignalFlowChart.tsx": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/AiAvatarStudio/useWebsocketConnection.ts": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/utils/test/mediaDeviceMocks.ts": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/SearchableList.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Cms/VersionSwitcher/VersionSelect.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/components/CommentatorControls/WhisperControl.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/reducer/profileReducer.ts": {
+            "status": "pending",
+            "original_data": 68,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/StartSoundcheck.tsx": {
+            "status": "pending",
+            "original_data": 91,
+            "attempts": 0
+        },
+        "src/containers/Cms/ActiveCommentators.tsx": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/api-calls/featureFlags/featureFlags.ts": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/SelectNetwork.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/utils/AudioAlert/middleware.ts": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/hooks/webrtcVideo/useWebrtcSource.ts": {
+            "status": "pending",
+            "original_data": 61,
+            "attempts": 0
+        },
+        "src/reducer/systemSettingsReducer.ts": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputServers/Components/OutputAdvancedOptions.tsx": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/AudioConfig/AudioConfigDropDown.tsx": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Utils/WebRtcPeer.ts": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/containers/Cms/CommentatorChecks.tsx": {
+            "status": "pending",
+            "original_data": 71,
+            "attempts": 0
+        },
+        "src/audioworklets/LoudnessAnalyserNode/EnergyHistogram.ts": {
+            "status": "pending",
+            "original_data": 98,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/Components/DemoReelRow.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Bridge/Intercom/room/useRoomConnectionManager.tsx": {
+            "status": "pending",
+            "original_data": 57,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/InfoDropDown/EventSummary/OutputSummary.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/reducer/eventReducer.ts": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/audioworklets/SidechainNoiseGateNode/NoiseGateTestHarness.ts": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/components/shadcn/field.tsx": {
+            "status": "pending",
+            "original_data": 56,
+            "attempts": 0
+        },
+        "src/containers/Cms/EditUserFeatureFlagTable.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/components/shadcn/skeleton.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/utils/Middleware/posthog/posthog.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Bridge/Intercom/room/useRoomConnection.tsx": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/utils/WebAudio/ChannelMapper.ts": {
+            "status": "pending",
+            "original_data": 78,
+            "attempts": 0
+        },
+        "src/api-calls/studio/studio.ts": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/api-calls/events/eventsCms.ts": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/utils/WebAudio/getInputChannelIndicesForTeam.ts": {
+            "status": "pending",
+            "original_data": 88,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Replayer/History/CardsList.tsx": {
+            "status": "pending",
+            "original_data": 12,
+            "attempts": 0
+        },
+        "src/api-calls/status/commentatorStatusesRtk.ts": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/ProducerVolumeController.tsx": {
+            "status": "pending",
+            "original_data": 37,
+            "attempts": 0
+        },
+        "src/containers/Invite/InviteAcceptContainer.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/Components/MediaDeviceSelector.tsx": {
+            "status": "pending",
+            "original_data": 76,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Games/RenderResynch.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Invite/HelperFunctions.ts": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/components/ConflictMessages/SipLineConflictMessage.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Cms/OutputStaticIPCMS.tsx": {
+            "status": "pending",
+            "original_data": 91,
+            "attempts": 0
+        },
+        "src/components/shadcn/chart.tsx": {
+            "status": "pending",
+            "original_data": 27,
+            "attempts": 0
+        },
+        "src/components/AudioControls/TalkbackButton.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/soundCheckLogging.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/fields/validate.ts": {
+            "status": "pending",
+            "original_data": 77,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Components/EventsTable.tsx": {
+            "status": "pending",
+            "original_data": 78,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/SportSelect.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/components/Tooltips/HelpTooltip.tsx": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/WebrtcSource.tsx": {
+            "status": "pending",
+            "original_data": 78,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/OSOutOfDate.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/GraphicalEqualiserPanel/ControlPanel/Toolbar/ChannelSelector.tsx": {
+            "status": "pending",
+            "original_data": 83,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Commentators/Components/CommentatorRow/LoudnessMeterContainer.tsx": {
+            "status": "pending",
+            "original_data": 3,
+            "attempts": 0
+        },
+        "src/utils/featureFlagsHelper.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/Review.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/api-calls/configs/configs.ts": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/components/ChannelMapping/utils.ts": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/Upload/SrtModeSelector.tsx": {
+            "status": "pending",
+            "original_data": 77,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/EventsTable.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/TeamVolumeControlsContainer.tsx": {
+            "status": "pending",
+            "original_data": 77,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Invite/InviteTeamsDropDown.tsx": {
+            "status": "pending",
+            "original_data": 82,
+            "attempts": 0
+        },
+        "src/containers/Settings/Components/SocialPanel.tsx": {
+            "status": "pending",
+            "original_data": 99,
+            "attempts": 0
+        },
+        "src/utils/DesktopClient/NetworkInterfaceManagerV2.ts": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/components/shadcn/table-themeable.tsx": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/containers/Profile/Components/HeroReel/NewReel.tsx": {
+            "status": "pending",
+            "original_data": 86,
+            "attempts": 0
+        },
+        "src/api-calls/rtmpStreaming/lowLatency.ts": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/containers/Cms/Organisations/EditOrganisations.tsx": {
+            "status": "pending",
+            "original_data": 83,
+            "attempts": 0
+        },
+        "src/components/ChannelMapping/Components/ChannelMixGrid.tsx": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/ImportButton.tsx": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/containers/Bridge/HostStats.tsx": {
+            "status": "pending",
+            "original_data": 58,
+            "attempts": 0
+        },
+        "src/containers/Cms/MmsConfigs/AudioConfigs.tsx": {
+            "status": "pending",
+            "original_data": 56,
+            "attempts": 0
+        },
+        "src/reducer/inputReducer.ts": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/Cms/NginxConfig.tsx": {
+            "status": "pending",
+            "original_data": 73,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Flags/AddUser.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/BumpersUpload.tsx": {
+            "status": "pending",
+            "original_data": 69,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/NetworkTestWorkflow.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/hooks/useNetworkInterface.ts": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Invite/InviteTeamsSearch.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Components/UsageGraph.tsx": {
+            "status": "pending",
+            "original_data": 73,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/HighPassFilterPanel.tsx": {
+            "status": "pending",
+            "original_data": 79,
+            "attempts": 0
+        },
+        "src/components/shadcn/multi-select.tsx": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/utils/Middleware/airbrake/airbrake.ts": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/utils/DesktopClient/DesktopClientHelpers.ts": {
+            "status": "pending",
+            "original_data": 57,
+            "attempts": 0
+        },
+        "src/containers/Cms/Modals/CreateMediaConnectOutputModal.tsx": {
+            "status": "pending",
+            "original_data": 80,
+            "attempts": 0
+        },
+        "src/reducer/organisationsReducer.ts": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Invite/languages.ts": {
+            "status": "pending",
+            "original_data": 81,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/CommentatorTest.tsx": {
+            "status": "pending",
+            "original_data": 88,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/gainUtils.ts": {
+            "status": "pending",
+            "original_data": 43,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamChatContainer.tsx": {
+            "status": "pending",
+            "original_data": 74,
+            "attempts": 0
+        },
+        "src/utils/mediaConnectStaticEncryptionKey.ts": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/containers/Multiviewer/Tile/AudioLevelMeter.tsx": {
+            "status": "pending",
+            "original_data": 91,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/ChromeOutOfDate.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/AudioConfig/helperFunctions.ts": {
+            "status": "pending",
+            "original_data": 60,
+            "attempts": 0
+        },
+        "src/reducer/authReducer.ts": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/components/shadcn/command.tsx": {
+            "status": "pending",
+            "original_data": 44,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/Components/DemoReelDialog.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/Bridge/BridgeDeviceSelector.tsx": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/containers/Cms/MarketplaceProfiles/MarketplaceProfiles.tsx": {
+            "status": "pending",
+            "original_data": 48,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/MonitorAudio/ProducerAudioControls.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/OnBoardingData.ts": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/components/DataTable/table-infinite.tsx": {
+            "status": "pending",
+            "original_data": 74,
+            "attempts": 0
+        },
+        "src/utils/PageVisibility/mock.ts": {
+            "status": "pending",
+            "original_data": 22,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Commentators/Commentators.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/Routes.tsx": {
+            "status": "pending",
+            "original_data": 73,
+            "attempts": 0
+        },
+        "src/utils/inputs.ts": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/Cms/FeatureFlags.tsx": {
+            "status": "pending",
+            "original_data": 71,
+            "attempts": 0
+        },
+        "src/containers/OnBoarding/DemoReel.tsx": {
+            "status": "pending",
+            "original_data": 77,
+            "attempts": 0
+        },
+        "src/reducer/teamsReducer.ts": {
+            "status": "pending",
+            "original_data": 40,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/HelperFunctions.ts": {
+            "status": "pending",
+            "original_data": 60,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/CommentaryControls/JitterBufferLengthSlider.tsx": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/microphoneLevels.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/SelectDevice.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputServers/Components/OutputShareItem.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/api-calls/events/uploadActions.ts": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/utils/WebAudio/PerChannelAudioProcessor.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/reducer/rtmpStreamReducer.ts": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/components/DataTable/table-group-chevron.tsx": {
+            "status": "pending",
+            "original_data": 60,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/LoudnessMeter/AudioPreview.tsx": {
+            "status": "pending",
+            "original_data": 28,
+            "attempts": 0
+        },
+        "src/components/ChannelMapping/Components/PresetButtons.tsx": {
+            "status": "pending",
+            "original_data": 91,
+            "attempts": 0
+        },
+        "src/utils/RtcStatsTracing/rtcStatsTracer.ts": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/components/CommentatorControls/MuteControl.tsx": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/CustomCell.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/utils/SocialMedia/Facebook.ts": {
+            "status": "pending",
+            "original_data": 58,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Pages/SipConfig.tsx": {
+            "status": "pending",
+            "original_data": 81,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/eventInformation.ts": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Bridge/Intercom/room/useToggleMicrophone.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/reducer/configsReducer.ts": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/api-calls/bumpers/bumpers.ts": {
+            "status": "pending",
+            "original_data": 82,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/AudioStreamManager.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/InfoDropDown.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputServers/utils.ts": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Managers/Tests/MockRTCPeerConnection.ts": {
+            "status": "pending",
+            "original_data": 73,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/StreamSettingsContainer.tsx": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Pages/OutputStaticIps.tsx": {
+            "status": "pending",
+            "original_data": 51,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Components/CommentatorsTable.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/LowLatency/LowLatencyOutputStreams.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/Multiviewer/Tile/Tile.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/SystemSettings/SystemSettingsContainer.tsx": {
+            "status": "pending",
+            "original_data": 78,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/BondingConfig.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/CommentatorTestOrchestrator/MmsAudioRecorder.ts": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/containers/Profile/Components/PersonalInformation.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/api-calls/organisations/ingestConfiguration.ts": {
+            "status": "pending",
+            "original_data": 57,
+            "attempts": 0
+        },
+        "src/containers/Bridge/Utils/connectToTeam.ts": {
+            "status": "pending",
+            "original_data": 79,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/Unsupported.tsx": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/hooks/useFeatureFlags.ts": {
+            "status": "pending",
+            "original_data": 83,
+            "attempts": 0
+        },
+        "src/api-calls/teams/teamsRtk.ts": {
+            "status": "pending",
+            "original_data": 9,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Replayer/History/HistorySegmentCard.tsx": {
+            "status": "pending",
+            "original_data": 6,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Utils/reactVideo.ts": {
+            "status": "pending",
+            "original_data": 91,
+            "attempts": 0
+        },
+        "src/containers/Cms/Modals/UploadBumper.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Commentators.tsx": {
+            "status": "pending",
+            "original_data": 72,
+            "attempts": 0
+        },
+        "src/components/shadcn/input-group.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/StudioStatusIndicator.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/Cms/PersistentInputsCMS.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/Cms/Bumpers/Bumpers.tsx": {
+            "status": "pending",
+            "original_data": 62,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputServers/Components/OutputMixRow.tsx": {
+            "status": "pending",
+            "original_data": 70,
+            "attempts": 0
+        },
+        "src/hooks/useSyncDarkmodeFeatureFlag.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/helperFunctions.ts": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/Games/RenderContentDeletionCell.tsx": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/reducer/sipReducer.ts": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/MultiChannelStream.ts": {
+            "status": "pending",
+            "original_data": 3,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Invite/AiComponents/AiAudioInputAdvancedSettings.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Settings/Components/MarketplacePanel.tsx": {
+            "status": "pending",
+            "original_data": 78,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputServers/OutputDropDown.tsx": {
+            "status": "pending",
+            "original_data": 98,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/LowLatency/LowLatencyIngestStreams.tsx": {
+            "status": "pending",
+            "original_data": 86,
+            "attempts": 0
+        },
+        "src/api-calls/profile/demo-video-upload.ts": {
+            "status": "pending",
+            "original_data": 82,
+            "attempts": 0
+        },
+        "src/containers/Cms/PersistentInputs.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/Scte35Container.tsx": {
+            "status": "pending",
+            "original_data": 72,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/Html5GraphicsContainer.tsx": {
+            "status": "pending",
+            "original_data": 89,
+            "attempts": 0
+        },
+        "src/components/shadcn/textarea.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamVolumeControls/PlayerVolumeController.tsx": {
+            "status": "pending",
+            "original_data": 68,
+            "attempts": 0
+        },
+        "src/containers/Cms/Bumpers/BumpersCMS.tsx": {
+            "status": "pending",
+            "original_data": 89,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/helperFunctions.tsx": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/StreamStatus/HelperFunction.ts": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/hooks/webrtcVideo/useSrtSubscriptionWorkflow.ts": {
+            "status": "pending",
+            "original_data": 4,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/TeamChatToast.tsx": {
+            "status": "pending",
+            "original_data": 26,
+            "attempts": 0
+        },
+        "src/containers/Bridge/Intercom/room/useDominantSpeaker.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/queryParams.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Upload/BrowseImageModal.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/components/MultiChannelAudioMixer/utils.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/CommentatorTestOrchestrator/AudioTest.ts": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/api-calls/users/profileEdit.ts": {
+            "status": "pending",
+            "original_data": 88,
+            "attempts": 0
+        },
+        "src/api-calls/teams/teams.ts": {
+            "status": "pending",
+            "original_data": 89,
+            "attempts": 0
+        },
+        "src/containers/Monitor/MonitorWebRTCContainer.tsx": {
+            "status": "pending",
+            "original_data": 97,
+            "attempts": 0
+        },
+        "src/api-calls/events/activeCommentators.ts": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/containers/Cms/Modals/SmpteUrlModal.tsx": {
+            "status": "pending",
+            "original_data": 1,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/CommentatorTestOrchestrator/CommentatorTestOrchestrator.ts": {
+            "status": "pending",
+            "original_data": 80,
+            "attempts": 0
+        },
+        "src/containers/AiAvatarStudio/AiCommentaryConfigurator.tsx": {
+            "status": "pending",
+            "original_data": 88,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Pages/Members.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputServers/Components/OutputScheduleOnLiveEvent.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/components/Header/MainMenu.tsx": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Pages/PersistentInputs.tsx": {
+            "status": "pending",
+            "original_data": 86,
+            "attempts": 0
+        },
+        "src/hooks/useId.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Cms/ContentManagementSystem.tsx": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/api-calls/inputs/inputs.ts": {
+            "status": "pending",
+            "original_data": 81,
+            "attempts": 0
+        },
+        "src/components/shadcn/breadcrumb.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/hooks/useDragOver.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputServers/Components/BridgeConnectionItem.tsx": {
+            "status": "pending",
+            "original_data": 57,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/fields/configs.ts": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/Settings/Components/EditProfilePanel.tsx": {
+            "status": "pending",
+            "original_data": 76,
+            "attempts": 0
+        },
+        "src/utils/checkObjectForSchedulingConflicts.ts": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Invite/AiComponents/AiAudioInputSelection.tsx": {
+            "status": "pending",
+            "original_data": 78,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/AudioWarningMessage.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/api-calls/users/users.ts": {
+            "status": "pending",
+            "original_data": 80,
+            "attempts": 0
+        },
+        "src/api-calls/bridge/bridge.ts": {
+            "status": "pending",
+            "original_data": 75,
+            "attempts": 0
+        },
+        "src/components/Tooltips/InformationTooltip.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/CommentaryControls/AudioDevicesSelector.tsx": {
+            "status": "pending",
+            "original_data": 95,
+            "attempts": 0
+        },
+        "src/containers/Cms/RtmpStreamsCMS.tsx": {
+            "status": "pending",
+            "original_data": 91,
+            "attempts": 0
+        },
+        "src/containers/Multiviewer/hooks/useUrlManager.ts": {
+            "status": "pending",
+            "original_data": 53,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/TemplateSummary.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/containers/Cms/RtmpStreams.tsx": {
+            "status": "pending",
+            "original_data": 86,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/Components/TimeScrubber.tsx": {
+            "status": "pending",
+            "original_data": 81,
+            "attempts": 0
+        },
+        "src/components/AudioControls/MuteButton.tsx": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/OutputServers/Components/OutputSchedulingContainer.tsx": {
+            "status": "pending",
+            "original_data": 79,
+            "attempts": 0
+        },
+        "src/components/shadcn/form.tsx": {
+            "status": "pending",
+            "original_data": 72,
+            "attempts": 0
+        },
+        "src/api-calls/replayer/replayer.ts": {
+            "status": "pending",
+            "original_data": 44,
+            "attempts": 0
+        },
+        "src/containers/Bridge/EventCard.tsx": {
+            "status": "pending",
+            "original_data": 86,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Commentators/Components/CommentatorContactInfoControl.tsx": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/components/ChannelMapping/Components/InfoContainer.tsx": {
+            "status": "pending",
+            "original_data": 25,
+            "attempts": 0
+        },
+        "src/containers/Cms/Users.tsx": {
+            "status": "pending",
+            "original_data": 66,
+            "attempts": 0
+        },
+        "src/utils/WebAudio/MockChannelMapper.ts": {
+            "status": "pending",
+            "original_data": 28,
+            "attempts": 0
+        },
+        "src/containers/Cms/EditUser.tsx": {
+            "status": "pending",
+            "original_data": 70,
+            "attempts": 0
+        },
+        "src/api-calls/studio/webrtcVideo.ts": {
+            "status": "pending",
+            "original_data": 67,
+            "attempts": 0
+        },
+        "src/utils/theme.ts": {
+            "status": "pending",
+            "original_data": 50,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/CommentatorTestOrchestrator/NetworkTest/ConnectivityTest.ts": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Invite/SipSearch.tsx": {
+            "status": "pending",
+            "original_data": 2,
+            "attempts": 0
+        },
+        "src/containers/Cms/Components/LowLatency/ProtocolTypes.ts": {
+            "status": "pending",
+            "original_data": 83,
+            "attempts": 0
+        },
+        "src/hooks/usePoll.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/components/CommentatorControls/EndCommentaryControl.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/components/shadcn/select.tsx": {
+            "status": "pending",
+            "original_data": 91,
+            "attempts": 0
+        },
+        "src/containers/Cms/Modals/TrainUserModal.tsx": {
+            "status": "pending",
+            "original_data": 90,
+            "attempts": 0
+        },
+        "src/components/Tiles/EventTileTs.tsx": {
+            "status": "pending",
+            "original_data": 68,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/mockSoundCheckLogging.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/BulkUpload/submit.ts": {
+            "status": "pending",
+            "original_data": 60,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/EventInformation.tsx": {
+            "status": "pending",
+            "original_data": 84,
+            "attempts": 0
+        },
+        "src/containers/Cms/Modals/robo-comm-runs/startRun.tsx": {
+            "status": "pending",
+            "original_data": 65,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/Components/MicrophoneVisualisation.tsx": {
+            "status": "pending",
+            "original_data": 92,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/JustStartTalking.tsx": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Bridge/CodeEditor.tsx": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Utils/popoutVideo.ts": {
+            "status": "pending",
+            "original_data": 5,
+            "attempts": 0
+        },
+        "src/containers/Soundcheck2.0/AudioTestPlayback.tsx": {
+            "status": "pending",
+            "original_data": 85,
+            "attempts": 0
+        },
+        "src/utils/encoderConfigurations.ts": {
+            "status": "pending",
+            "original_data": 98,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Components/VUMeter.tsx": {
+            "status": "pending",
+            "original_data": 47,
+            "attempts": 0
+        },
+        "src/api-calls/mediaLiveChannels/mediaLiveChannel.ts": {
+            "status": "pending",
+            "original_data": 71,
+            "attempts": 0
+        },
+        "src/containers/AiAvatarStudio/AudioPlayer.tsx": {
+            "status": "pending",
+            "original_data": 36,
+            "attempts": 0
+        },
+        "src/api-calls/staticIps/staticIps.ts": {
+            "status": "pending",
+            "original_data": 80,
+            "attempts": 0
+        },
+        "src/containers/Login/LoginPage.tsx": {
+            "status": "pending",
+            "original_data": 77,
+            "attempts": 0
+        },
+        "src/App.tsx": {
+            "status": "pending",
+            "original_data": 51,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Components/UsageInputsTable.tsx": {
+            "status": "pending",
+            "original_data": 77,
+            "attempts": 0
+        },
+        "src/api-calls/rtmpStreaming/streams.ts": {
+            "status": "pending",
+            "original_data": 88,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/Commentators/Components/CommentatorRow/CommImg.tsx": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/utils/AudioAlert/AudioAlert.ts": {
+            "status": "pending",
+            "original_data": 6,
+            "attempts": 0
+        },
+        "src/utils/depDebugger.ts": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        },
+        "src/hooks/webrtcVideo/useWebRTCBase.ts": {
+            "status": "pending",
+            "original_data": 36,
+            "attempts": 0
+        },
+        "src/containers/CommentatorStudio/Managers/SynchManager.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Cms/TrainUser.tsx": {
+            "status": "pending",
+            "original_data": 58,
+            "attempts": 0
+        },
+        "src/containers/Cms/EditOrganisationFeatureFlagTable.tsx": {
+            "status": "pending",
+            "original_data": 87,
+            "attempts": 0
+        },
+        "src/utils/Middleware/chatLastRead/chatLastRead.ts": {
+            "status": "pending",
+            "original_data": 94,
+            "attempts": 0
+        },
+        "src/containers/Dashboard/Components/InfoDropDown/EventSummary/OutputsSummary.tsx": {
+            "status": "pending",
+            "original_data": 93,
+            "attempts": 0
+        },
+        "src/containers/Cms/EditUserCMS.tsx": {
+            "status": "pending",
+            "original_data": 80,
+            "attempts": 0
+        },
+        "src/components/DataTable/table-paginated.tsx": {
+            "status": "pending",
+            "original_data": 96,
+            "attempts": 0
+        },
+        "src/containers/Organisation/Components/Table.tsx": {
+            "status": "pending",
+            "original_data": 61,
+            "attempts": 0
+        },
+        "src/components/shadcn/card.tsx": {
+            "status": "pending",
+            "original_data": 0,
+            "attempts": 0
+        }
+    },
+    "started_at": "2026-02-04T02:23:32.555255Z",
+    "updated_at": "2026-02-04T02:23:32.557647Z"
+}

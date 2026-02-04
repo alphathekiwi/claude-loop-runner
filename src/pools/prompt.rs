@@ -1,6 +1,7 @@
 use crate::claude::{build_prompt, run_claude};
 use crate::config::Config;
-use crate::process::{check_git_changes, expand_pattern, parse_result};
+use crate::git::check_git_changes_filtered;
+use crate::process::{expand_pattern, parse_result};
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
 use async_channel::{Receiver, Sender};
@@ -79,20 +80,29 @@ async fn prompt_worker(
         // Run Claude
         match run_claude(&prompt, &working_dir).await {
             Ok(output) => {
-                // Check for unauthorized file changes
-                if let Ok((_, unauthorized)) = check_git_changes(&allowlist, &working_dir).await {
-                    if !unauthorized.is_empty() {
-                        let unauthorized_list: Vec<_> = unauthorized
-                            .iter()
-                            .map(|p| p.display().to_string())
-                            .collect();
-                        warn!(
-                            worker = worker_id,
-                            file = %file_display,
-                            unauthorized = ?unauthorized_list,
-                            "Detected unauthorized file changes"
-                        );
-                        // Note: We log but don't fail - the verification step will catch issues
+                // Check for unauthorized file changes (filtering out pre-existing dirty files)
+                let git_state = {
+                    let state = state.lock().await;
+                    state.git_state.clone()
+                };
+
+                if git_state.enabled {
+                    if let Ok((_, unauthorized)) =
+                        check_git_changes_filtered(&allowlist, &working_dir, &git_state).await
+                    {
+                        if !unauthorized.is_empty() {
+                            let unauthorized_list: Vec<_> = unauthorized
+                                .iter()
+                                .map(|p| p.display().to_string())
+                                .collect();
+                            warn!(
+                                worker = worker_id,
+                                file = %file_display,
+                                unauthorized = ?unauthorized_list,
+                                "Detected unauthorized file changes (excluding pre-existing dirty files)"
+                            );
+                            // Note: We log but don't fail - the verification step will catch issues
+                        }
                     }
                 }
 

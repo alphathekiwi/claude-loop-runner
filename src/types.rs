@@ -2,9 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Status of a file in the processing pipeline
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileStatus {
+    #[default]
     /// Not yet started
     Pending,
     /// Currently being processed by prompt worker
@@ -19,12 +20,6 @@ pub enum FileStatus {
     Completed,
     /// Failed after max retries
     Failed,
-}
-
-impl Default for FileStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 /// State of a single file being processed

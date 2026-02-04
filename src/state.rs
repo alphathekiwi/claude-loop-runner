@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::git::GitState;
 use crate::types::{FileState, FileStatus, ParsedResult};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -18,6 +19,9 @@ pub struct State {
     pub started_at: DateTime<Utc>,
     /// Last update time
     pub updated_at: DateTime<Utc>,
+    /// Git state (dirty files, branch info)
+    #[serde(default)]
+    pub git_state: GitState,
 }
 
 impl State {
@@ -28,7 +32,13 @@ impl State {
             files: HashMap::new(),
             started_at: Utc::now(),
             updated_at: Utc::now(),
+            git_state: GitState::default(),
         }
+    }
+
+    /// Set the git state (called after capturing initial git status)
+    pub fn set_git_state(&mut self, git_state: GitState) {
+        self.git_state = git_state;
     }
 
     /// Load state from a file
@@ -66,9 +76,9 @@ impl State {
             .with_context(|| format!("Failed to parse input file: {}", input_path.display()))?;
 
         for (path, original_data) in input {
-            if !self.files.contains_key(&path) {
-                self.files.insert(path, FileState::new(original_data));
-            }
+            self.files
+                .entry(path)
+                .or_insert_with(|| FileState::new(original_data));
         }
 
         Ok(())

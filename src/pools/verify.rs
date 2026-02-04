@@ -1,5 +1,6 @@
 use crate::claude::{build_fixup_prompt, run_claude};
 use crate::config::Config;
+use crate::git::commit_file_changes;
 use crate::process::{expand_pattern, parse_result, run_command};
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
@@ -8,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Spawn a pool of verification workers
 pub fn spawn_verify_pool(
@@ -103,6 +104,36 @@ async fn verify_worker(
                     file = %file_display,
                     "Verification PASSED"
                 );
+
+                // Auto-commit if enabled
+                if config.git.auto_commit {
+                    let description = config.git.commit_message_template.as_deref();
+                    match commit_file_changes(&working_dir, &task.path, description).await {
+                        Ok(Some(hash)) => {
+                            info!(
+                                worker = worker_id,
+                                file = %file_display,
+                                commit = %hash,
+                                "Auto-committed changes"
+                            );
+                        }
+                        Ok(None) => {
+                            debug!(
+                                worker = worker_id,
+                                file = %file_display,
+                                "No changes to commit"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                worker = worker_id,
+                                file = %file_display,
+                                error = %e,
+                                "Failed to auto-commit (continuing anyway)"
+                            );
+                        }
+                    }
+                }
 
                 let mut state = state.lock().await;
                 state.update_status(&task.path, FileStatus::Completed);

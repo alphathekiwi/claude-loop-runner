@@ -1,0 +1,11 @@
+{
+    "tasks": {
+        "task_0": {
+            "state_file": "state_0.json",
+            "working_dir": "/workspaces/content-hub/ch-client",
+            "description": "Improve the test coverage for this React/TypeSc...",
+            "completed": false
+        }
+    },
+    "next_id": 1
+}

@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::pools::{spawn_prompt_pool, spawn_verify_pool};
+use crate::process::expand_pattern;
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
 use anyhow::Result;
@@ -7,7 +8,7 @@ use async_channel::{bounded, Sender};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{debug, info};
 
 /// Main orchestration function
 pub async fn run(
@@ -26,9 +27,16 @@ pub async fn run(
     let (prompt_tx, prompt_rx) = bounded::<FileTask>(100);
     let (verify_tx, verify_rx) = bounded::<FileTask>(100);
 
-    // Queue pending files
-    let files_to_process =
-        queue_pending_files(&state, &prompt_tx, &verify_tx, config.max_files).await?;
+    // Queue pending files and build global allowlist for parallel worker support
+    let files_to_process = queue_pending_files(
+        &state,
+        &prompt_tx,
+        &verify_tx,
+        config.max_files,
+        &config.allowlist_pattern,
+        &state_path,
+    )
+    .await?;
 
     if files_to_process == 0 {
         info!("No files to process");
@@ -99,17 +107,52 @@ pub async fn run(
     Ok(())
 }
 
-/// Queue files that need processing
+/// Queue files that need processing and build global allowlist
 async fn queue_pending_files(
     state: &Arc<Mutex<State>>,
     prompt_tx: &Sender<FileTask>,
     verify_tx: &Sender<FileTask>,
     max_files: Option<usize>,
+    allowlist_pattern: &str,
+    state_path: &PathBuf,
 ) -> Result<usize> {
-    let state = state.lock().await;
+    let mut state = state.lock().await;
     let mut queued = 0;
 
-    for (path, file_state) in &state.files {
+    // First pass: collect all files that will be processed and build global allowlist
+    let files_to_queue: Vec<_> = state
+        .files
+        .iter()
+        .filter(|(_, file_state)| {
+            !matches!(
+                file_state.status,
+                FileStatus::Completed | FileStatus::Failed
+            )
+        })
+        .map(|(path, file_state)| (path.clone(), file_state.clone()))
+        .collect();
+
+    // Build global allowlist from all files being processed
+    if state.git_state.enabled {
+        for (path, _) in &files_to_queue {
+            let pattern = expand_pattern(allowlist_pattern, path);
+            state.git_state.add_allowlist_pattern(pattern.clone());
+            debug!(pattern = %pattern, "Added to global allowlist");
+        }
+
+        // Save state with updated allowlist
+        if let Err(e) = state.save(state_path) {
+            tracing::error!(error = %e, "Failed to save state with global allowlist");
+        } else {
+            info!(
+                patterns = state.git_state.global_allowlist_patterns.len(),
+                "Built global allowlist for parallel workers"
+            );
+        }
+    }
+
+    // Second pass: queue the files
+    for (path, file_state) in files_to_queue {
         // Check max files limit
         if let Some(max) = max_files {
             if queued >= max {
