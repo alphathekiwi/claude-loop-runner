@@ -19,72 +19,67 @@ jobs:
           # macOS ARM (Apple Silicon)
           - target: aarch64-apple-darwin
             os: macos-latest
+            use-cross: false
 
           # macOS Intel
           - target: x86_64-apple-darwin
             os: macos-latest
+            use-cross: false
 
           # Linux x86_64
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            use-cross: false
 
           # Linux ARM64 (for Docker on Apple Silicon, AWS Graviton, Raspberry Pi, etc.)
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
+            use-cross: true
 
           # Linux x86_64 musl (static binary)
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
+            use-cross: true
 
           # Linux ARM64 musl (static binary)
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
+            use-cross: true
 
           # Windows x86_64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
+            use-cross: false
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # For targets that don't need cross-compilation
       - name: Install Rust toolchain
+        if: ${{ !matrix.use-cross }}
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools (Linux ARM64 glibc)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Install cross-compilation tools (Linux x86_64 musl)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
-
-      - name: Install cross-compilation tools (Linux ARM64 musl)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
-          # Install musl cross-compiler for aarch64
-          wget -q https://musl.cc/aarch64-linux-musl-cross.tgz
-          tar -xzf aarch64-linux-musl-cross.tgz
-          echo "$PWD/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
-
       - name: Cache cargo registry and build
+        if: ${{ !matrix.use-cross }}
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
 
-      - name: Build
+      - name: Build (native)
+        if: ${{ !matrix.use-cross }}
         run: cargo build --release --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-gcc
+
+      # For targets that need cross-compilation (Linux ARM64, musl targets)
+      - name: Build (cross)
+        if: ${{ matrix.use-cross }}
+        uses: houseabsolute/actions-rust-cross@v1
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          args: --release
 
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
