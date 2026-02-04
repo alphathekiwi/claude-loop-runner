@@ -1,7 +1,7 @@
 use crate::claude::{build_fixup_prompt, run_claude};
 use crate::config::Config;
 use crate::git::commit_file_changes;
-use crate::process::{expand_pattern, parse_result, run_command};
+use crate::process::{expand_pattern_with_allowlist, parse_result, run_command};
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
 use async_channel::Receiver;
@@ -121,7 +121,11 @@ async fn verify_worker(
             }
 
             // Run verification command
-            let cmd = expand_pattern(&verification_cmd, &task.path);
+            let cmd = expand_pattern_with_allowlist(
+                &verification_cmd,
+                &task.path,
+                &config.allowlist_pattern,
+            );
             let result = match run_command(&cmd).await {
                 Ok(r) => r,
                 Err(e) => {

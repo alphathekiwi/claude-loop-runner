@@ -18,7 +18,7 @@ pub struct Cli {
     #[arg(short, long)]
     pub fixup: Option<String>,
 
-    /// Verification command ({file} will be substituted)
+    /// Verification command (substitutions: {file}, {file_stem}, {file_dir}, {all_files}, {test_files}, {created_files})
     #[arg(short, long)]
     pub verify: Option<String>,
 

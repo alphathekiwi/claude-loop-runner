@@ -1,12 +1,19 @@
 use crate::types::{ParsedResult, ProcessOutput};
 use anyhow::{Context, Result};
+use glob::glob;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 
 /// Expand pattern placeholders with file path components
-/// Supports: {file}, {file_stem}, {file_dir}
+/// Supports: {file}, {file_stem}, {file_dir}, {all_files}, {test_files}, {created_files}
 pub fn expand_pattern(pattern: &str, file_path: &Path) -> String {
+    expand_pattern_with_allowlist(pattern, file_path, "{file_stem}*")
+}
+
+/// Expand pattern placeholders with file path components and a custom allowlist
+/// Supports: {file}, {file_stem}, {file_dir}, {all_files}, {test_files}, {created_files}
+pub fn expand_pattern_with_allowlist(pattern: &str, file_path: &Path, allowlist: &str) -> String {
     let file_str = file_path.to_string_lossy();
 
     let file_stem = file_path
@@ -19,10 +26,127 @@ pub fn expand_pattern(pattern: &str, file_path: &Path) -> String {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
+    // Only compute these if needed (they involve filesystem operations)
+    let all_files = if pattern.contains("{all_files}") {
+        find_all_files(file_path, allowlist).join(" ")
+    } else {
+        String::new()
+    };
+
+    let test_files = if pattern.contains("{test_files}") {
+        find_test_files(file_path, allowlist).join(" ")
+    } else {
+        String::new()
+    };
+
+    let created_files = if pattern.contains("{created_files}") {
+        find_created_files(file_path, allowlist).join(" ")
+    } else {
+        String::new()
+    };
+
     pattern
         .replace("{file}", &file_str)
         .replace("{file_stem}", &file_stem)
         .replace("{file_dir}", &file_dir)
+        .replace("{all_files}", &all_files)
+        .replace("{test_files}", &test_files)
+        .replace("{created_files}", &created_files)
+}
+
+/// Find all files matching the allowlist pattern (includes the source file)
+/// Returns: {file} and any files that match the allowlist glob
+pub fn find_all_files(file_path: &Path, allowlist_pattern: &str) -> Vec<String> {
+    let glob_pattern = expand_allowlist_to_glob(file_path, allowlist_pattern);
+    let mut files = collect_glob_matches(&glob_pattern);
+
+    // Ensure the source file is included
+    let file_str = file_path.to_string_lossy().to_string();
+    if !files.contains(&file_str) {
+        files.insert(0, file_str);
+    }
+
+    files
+}
+
+/// Find test files that likely correspond to the source file
+/// Looks for files with common test patterns: *.test.*, *.spec.*, *_test.*, *_spec.*
+pub fn find_test_files(file_path: &Path, allowlist_pattern: &str) -> Vec<String> {
+    let all_files = find_all_files(file_path, allowlist_pattern);
+    let file_str = file_path.to_string_lossy().to_string();
+
+    all_files
+        .into_iter()
+        .filter(|f| {
+            // Exclude the source file itself
+            if f == &file_str {
+                return false;
+            }
+            // Match common test file patterns
+            let lower = f.to_lowercase();
+            lower.contains(".test.")
+                || lower.contains(".spec.")
+                || lower.contains("_test.")
+                || lower.contains("_spec.")
+                || lower.contains("/test/")
+                || lower.contains("/tests/")
+                || lower.contains("/__tests__/")
+        })
+        .collect()
+}
+
+/// Find files that match the allowlist glob but are NOT the source file itself
+/// These are likely files created by Claude during processing
+pub fn find_created_files(file_path: &Path, allowlist_pattern: &str) -> Vec<String> {
+    let glob_pattern = expand_allowlist_to_glob(file_path, allowlist_pattern);
+    let files = collect_glob_matches(&glob_pattern);
+    let file_str = file_path.to_string_lossy().to_string();
+
+    files.into_iter().filter(|f| f != &file_str).collect()
+}
+
+/// Expand an allowlist pattern to a glob pattern for filesystem searching
+fn expand_allowlist_to_glob(file_path: &Path, allowlist_pattern: &str) -> String {
+    let file_str = file_path.to_string_lossy();
+
+    let file_stem = file_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let file_dir = file_path
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+
+    // Replace placeholders in the allowlist pattern
+    let expanded = allowlist_pattern
+        .replace("{file}", &file_str)
+        .replace("{file_stem}", &file_stem)
+        .replace("{file_dir}", &file_dir);
+
+    // If the pattern doesn't contain a directory separator, search in the file's directory
+    if !expanded.contains('/') && !expanded.contains('\\') {
+        if file_dir.is_empty() || file_dir == "." {
+            expanded
+        } else {
+            format!("{}/{}", file_dir, expanded)
+        }
+    } else {
+        expanded
+    }
+}
+
+/// Collect all files matching a glob pattern
+fn collect_glob_matches(pattern: &str) -> Vec<String> {
+    match glob(pattern) {
+        Ok(paths) => paths
+            .filter_map(|entry| entry.ok())
+            .filter(|p| p.is_file())
+            .map(|p| p.to_string_lossy().to_string())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 /// Run a shell command and capture output
@@ -245,5 +369,69 @@ RESULT: {"second": 2}
 "#;
         let result = parse_result(stdout);
         assert_eq!(result.value["second"], 2);
+    }
+
+    #[test]
+    fn test_expand_allowlist_to_glob() {
+        let path = PathBuf::from("src/reducer/teamsReducer.ts");
+
+        // Default pattern {file_stem}* should become src/reducer/teamsReducer*
+        assert_eq!(
+            expand_allowlist_to_glob(&path, "{file_stem}*"),
+            "src/reducer/teamsReducer*"
+        );
+
+        // Pattern with dir placeholder
+        assert_eq!(
+            expand_allowlist_to_glob(&path, "{file_dir}/*.ts"),
+            "src/reducer/*.ts"
+        );
+
+        // Absolute pattern (already has directory)
+        assert_eq!(
+            expand_allowlist_to_glob(&path, "src/**/*.ts"),
+            "src/**/*.ts"
+        );
+    }
+
+    #[test]
+    fn test_is_test_file_pattern() {
+        // These should match test file patterns
+        let test_patterns = vec![
+            "src/component.test.ts",
+            "src/component.spec.ts",
+            "src/component_test.py",
+            "src/component_spec.rb",
+            "src/test/component.ts",
+            "src/tests/component.ts",
+            "src/__tests__/component.ts",
+        ];
+
+        for pattern in test_patterns {
+            let lower = pattern.to_lowercase();
+            let is_test = lower.contains(".test.")
+                || lower.contains(".spec.")
+                || lower.contains("_test.")
+                || lower.contains("_spec.")
+                || lower.contains("/test/")
+                || lower.contains("/tests/")
+                || lower.contains("/__tests__/");
+            assert!(is_test, "Expected {} to match test pattern", pattern);
+        }
+
+        // These should NOT match test file patterns
+        let non_test_patterns = vec!["src/component.ts", "src/testing.ts", "src/testUtils.ts"];
+
+        for pattern in non_test_patterns {
+            let lower = pattern.to_lowercase();
+            let is_test = lower.contains(".test.")
+                || lower.contains(".spec.")
+                || lower.contains("_test.")
+                || lower.contains("_spec.")
+                || lower.contains("/test/")
+                || lower.contains("/tests/")
+                || lower.contains("/__tests__/");
+            assert!(!is_test, "Expected {} to NOT match test pattern", pattern);
+        }
     }
 }
