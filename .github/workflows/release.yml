@@ -31,6 +31,10 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
 
+          # Linux ARM64 (for Docker on Apple Silicon, AWS Graviton, Raspberry Pi, etc.)
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+
           # Windows x86_64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -44,6 +48,12 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@v2
         with:
@@ -51,6 +61,8 @@ jobs:
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
