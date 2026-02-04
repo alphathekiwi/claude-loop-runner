@@ -104,6 +104,7 @@ pub fn matches_allowlist(path: &Path, pattern: &str) -> bool {
 
 /// Get list of files modified since last commit (or all uncommitted changes)
 /// Returns (allowed_files, unauthorized_files) based on the allowlist pattern
+#[allow(dead_code)]
 pub async fn check_git_changes(
     allowlist_pattern: &str,
     working_dir: &Path,

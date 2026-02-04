@@ -5,7 +5,7 @@ use crate::state::State;
 use crate::types::{FileStatus, FileTask};
 use anyhow::Result;
 use async_channel::{bounded, Sender};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
@@ -114,7 +114,7 @@ async fn queue_pending_files(
     verify_tx: &Sender<FileTask>,
     max_files: Option<usize>,
     allowlist_pattern: &str,
-    state_path: &PathBuf,
+    state_path: &Path,
 ) -> Result<usize> {
     let mut state = state.lock().await;
     let mut queued = 0;

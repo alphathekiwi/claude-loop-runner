@@ -62,6 +62,7 @@ impl GitState {
     }
 
     /// Get files that are newly modified (not pre-existing dirty)
+    #[allow(dead_code)]
     pub fn filter_new_changes(&self, changed_files: &[PathBuf]) -> Vec<PathBuf> {
         changed_files
             .iter()
@@ -180,6 +181,7 @@ pub async fn create_task_branch(working_dir: &Path, task_id: &str) -> Result<Str
 }
 
 /// Checkout an existing branch
+#[allow(dead_code)]
 pub async fn checkout_branch(working_dir: &Path, branch: &str) -> Result<()> {
     let output = Command::new("git")
         .args(["checkout", branch])
@@ -321,6 +323,7 @@ pub async fn commit_file_changes(
 }
 
 /// Get the diff for staged files
+#[allow(dead_code)]
 pub async fn get_staged_diff(working_dir: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["diff", "--cached"])
@@ -335,6 +338,7 @@ pub async fn get_staged_diff(working_dir: &Path) -> Result<String> {
 }
 
 /// Get the diff for a specific file (unstaged changes)
+#[allow(dead_code)]
 pub async fn get_file_diff(working_dir: &Path, file_path: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["diff", "--"])
@@ -350,6 +354,7 @@ pub async fn get_file_diff(working_dir: &Path, file_path: &Path) -> Result<Strin
 }
 
 /// Check if there are any uncommitted changes
+#[allow(dead_code)]
 pub async fn has_uncommitted_changes(working_dir: &Path) -> Result<bool> {
     let output = Command::new("git")
         .args(["status", "--porcelain"])
@@ -363,6 +368,7 @@ pub async fn has_uncommitted_changes(working_dir: &Path) -> Result<bool> {
 }
 
 /// Stash current changes
+#[allow(dead_code)]
 pub async fn stash(working_dir: &Path, message: Option<&str>) -> Result<()> {
     let mut args = vec!["stash", "push"];
     if let Some(msg) = message {
@@ -391,6 +397,7 @@ pub async fn stash(working_dir: &Path, message: Option<&str>) -> Result<()> {
 }
 
 /// Pop the most recent stash
+#[allow(dead_code)]
 pub async fn stash_pop(working_dir: &Path) -> Result<()> {
     let output = Command::new("git")
         .args(["stash", "pop"])
