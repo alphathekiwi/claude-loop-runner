@@ -80,7 +80,7 @@ impl TaskList {
         let task_id = format!("task_{}", self.next_id);
         self.next_id += 1;
 
-        let state_file = format!("state_{}.json", self.next_id - 1);
+        let state_file = format!("tasks/state_{}.json", self.next_id - 1);
 
         self.tasks.insert(
             task_id.clone(),

@@ -5,6 +5,21 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 
+/// Extract the file stem, stripping both the extension and common test suffixes (.test, .spec)
+/// e.g., "parser.test.ts" -> "parser", "component.spec.tsx" -> "component"
+pub fn extract_file_stem(file_path: &Path) -> String {
+    let stem = file_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Strip common test suffixes
+    stem.strip_suffix(".test")
+        .or_else(|| stem.strip_suffix(".spec"))
+        .map(|s| s.to_string())
+        .unwrap_or(stem)
+}
+
 /// Expand pattern placeholders with file path components
 /// Supports: {file}, {file_stem}, {file_dir}, {all_files}, {test_files}, {created_files}
 pub fn expand_pattern(pattern: &str, file_path: &Path) -> String {
@@ -16,10 +31,7 @@ pub fn expand_pattern(pattern: &str, file_path: &Path) -> String {
 pub fn expand_pattern_with_allowlist(pattern: &str, file_path: &Path, allowlist: &str) -> String {
     let file_str = file_path.to_string_lossy();
 
-    let file_stem = file_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let file_stem = extract_file_stem(file_path);
 
     let file_dir = file_path
         .parent()
@@ -109,10 +121,7 @@ pub fn find_created_files(file_path: &Path, allowlist_pattern: &str) -> Vec<Stri
 fn expand_allowlist_to_glob(file_path: &Path, allowlist_pattern: &str) -> String {
     let file_str = file_path.to_string_lossy();
 
-    let file_stem = file_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let file_stem = extract_file_stem(file_path);
 
     let file_dir = file_path
         .parent()
@@ -277,6 +286,33 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn test_extract_file_stem() {
+        // Regular file - just strips extension
+        assert_eq!(
+            extract_file_stem(&PathBuf::from("src/utils/parser.ts")),
+            "parser"
+        );
+
+        // Test file - strips both .test and extension
+        assert_eq!(
+            extract_file_stem(&PathBuf::from("src/utils/parser.test.ts")),
+            "parser"
+        );
+
+        // Spec file - strips both .spec and extension
+        assert_eq!(
+            extract_file_stem(&PathBuf::from("src/utils/parser.spec.tsx")),
+            "parser"
+        );
+
+        // File with multiple dots but no test/spec suffix
+        assert_eq!(
+            extract_file_stem(&PathBuf::from("src/config.dev.ts")),
+            "config.dev"
+        );
+    }
+
+    #[test]
     fn test_expand_pattern() {
         let path = PathBuf::from("src/reducer/teamsReducer.test.ts");
 
@@ -284,11 +320,19 @@ mod tests {
             expand_pattern("{file}", &path),
             "src/reducer/teamsReducer.test.ts"
         );
-        assert_eq!(expand_pattern("{file_stem}*", &path), "teamsReducer.test*");
+        // file_stem now strips .test suffix
+        assert_eq!(expand_pattern("{file_stem}*", &path), "teamsReducer*");
         assert_eq!(expand_pattern("{file_dir}/*.ts", &path), "src/reducer/*.ts");
         assert_eq!(
             expand_pattern("{file_dir}/{file_stem}*", &path),
-            "src/reducer/teamsReducer.test*"
+            "src/reducer/teamsReducer*"
+        );
+
+        // Test with a non-test file
+        let regular_path = PathBuf::from("src/reducer/teamsReducer.ts");
+        assert_eq!(
+            expand_pattern("{file_stem}*", &regular_path),
+            "teamsReducer*"
         );
     }
 

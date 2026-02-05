@@ -1,3 +1,4 @@
+use crate::process::extract_file_stem;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -280,10 +281,7 @@ pub async fn commit_file_changes(
     let dirty_files = get_dirty_files(working_dir).await?;
 
     // Find files that match the file_path pattern (including related test files, etc.)
-    let file_stem = file_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let file_stem = extract_file_stem(file_path);
 
     let related_files: Vec<PathBuf> = dirty_files
         .into_iter()

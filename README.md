@@ -66,7 +66,7 @@ Output:
 
 **Step 2: Review and edit the task state**
 
-The task configuration is saved in `./claude-loop-tasks/state_0.json`. You can edit this file to:
+The task configuration is saved in `./claude-loop-tasks/tasks/state_0.json`. You can edit this file to:
 - Modify the prompt
 - Change verification command
 - Remove files you don't want processed
@@ -74,10 +74,10 @@ The task configuration is saved in `./claude-loop-tasks/state_0.json`. You can e
 
 ```bash
 # View the task state
-cat ./claude-loop-tasks/state_0.json | jq .
+cat ./claude-loop-tasks/tasks/state_0.json | jq .
 
 # Edit if needed
-vim ./claude-loop-tasks/state_0.json
+vim ./claude-loop-tasks/tasks/state_0.json
 ```
 
 **Step 3: Resume the task**
@@ -161,6 +161,7 @@ The following placeholders are substituted in `--verify`, `--allowlist`, and `--
 |-------------|--------------|--------|
 | `{file}` | `src/utils/parser.ts` | `src/utils/parser.ts` |
 | `{file_stem}` | `src/utils/parser.ts` | `parser` |
+| `{file_stem}` | `src/utils/parser.test.ts` | `parser` |
 | `{file_dir}` | `src/utils/parser.ts` | `src/utils` |
 
 ## Task States
@@ -182,9 +183,10 @@ Tasks are persisted in the tasks directory:
 ```
 claude-loop-tasks/
 ├── task_list.json      # Registry of all tasks
-├── state_0.json        # State for task_0
-├── state_1.json        # State for task_1
-└── ...
+└── tasks/
+    ├── state_0.json    # State for task_0
+    ├── state_1.json    # State for task_1
+    └── ...
 ```
 
 State is saved after every status change, so you can safely interrupt with Ctrl+C and resume later.

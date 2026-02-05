@@ -4,6 +4,13 @@ use std::path::PathBuf;
 #[derive(Parser, Debug, Clone)]
 #[command(name = "claude-loop-runner")]
 #[command(about = "Run multiple Claude CLI instances in parallel to process files")]
+#[command(
+    long_about = "Run multiple Claude CLI instances in parallel to process files.
+
+This tool is designed for long-running batch operations that may take hours to complete.
+It is strongly recommended to run this in tmux or screen to avoid timeouts and
+disconnections. Use --resume to continue from where you left off if interrupted."
+)]
 #[command(version)]
 pub struct Cli {
     /// Input JSON file mapping filepaths to metadata

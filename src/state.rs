@@ -54,6 +54,13 @@ impl State {
     pub fn save(&mut self, path: &Path) -> Result<()> {
         self.updated_at = Utc::now();
 
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create state directory: {}", parent.display())
+            })?;
+        }
+
         let temp_path = path.with_extension("json.tmp");
         let content = serde_json::to_string_pretty(self).context("Failed to serialize state")?;
 
