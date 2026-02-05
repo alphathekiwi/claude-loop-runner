@@ -2,6 +2,7 @@ mod claude;
 mod cli;
 mod config;
 mod git;
+mod memory;
 mod pools;
 mod process;
 mod runner;

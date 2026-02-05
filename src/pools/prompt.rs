@@ -1,6 +1,7 @@
 use crate::claude::{build_prompt, run_claude};
 use crate::config::Config;
 use crate::git::check_git_changes_filtered;
+use crate::memory::MemoryHandle;
 use crate::process::{expand_pattern, parse_result};
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
@@ -20,6 +21,7 @@ pub fn spawn_prompt_pool(
     state_path: PathBuf,
     config: Arc<Config>,
     working_dir: PathBuf,
+    memory: MemoryHandle,
 ) -> Vec<JoinHandle<()>> {
     (0..concurrency)
         .map(|worker_id| {
@@ -29,6 +31,7 @@ pub fn spawn_prompt_pool(
             let state_path = state_path.clone();
             let config = Arc::clone(&config);
             let working_dir = working_dir.clone();
+            let memory = memory.clone();
 
             tokio::spawn(async move {
                 prompt_worker(
@@ -39,6 +42,7 @@ pub fn spawn_prompt_pool(
                     state_path,
                     config,
                     working_dir,
+                    memory,
                 )
                 .await;
             })
@@ -54,8 +58,16 @@ async fn prompt_worker(
     state_path: PathBuf,
     config: Arc<Config>,
     working_dir: PathBuf,
+    memory: MemoryHandle,
 ) {
     while let Ok(task) = rx.recv().await {
+        // Wait if memory pressure is high
+        if memory.is_paused() {
+            info!(worker = worker_id, "Waiting for memory pressure to ease...");
+            memory.wait_if_paused().await;
+            info!(worker = worker_id, "Resuming after memory recovery");
+        }
+
         let file_display = task.path.display().to_string();
         info!(worker = worker_id, file = %file_display, "Starting prompt task");
 

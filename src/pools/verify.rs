@@ -1,6 +1,7 @@
 use crate::claude::{build_fixup_prompt, run_claude};
 use crate::config::Config;
 use crate::git::commit_file_changes;
+use crate::memory::MemoryHandle;
 use crate::process::{expand_pattern_with_allowlist, parse_result, run_command};
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
@@ -23,6 +24,7 @@ pub fn spawn_verify_pool(
     config: Arc<Config>,
     working_dir: PathBuf,
     tasks_dir: PathBuf,
+    memory: MemoryHandle,
 ) -> Vec<JoinHandle<()>> {
     (0..concurrency)
         .map(|worker_id| {
@@ -32,6 +34,7 @@ pub fn spawn_verify_pool(
             let config = Arc::clone(&config);
             let working_dir = working_dir.clone();
             let tasks_dir = tasks_dir.clone();
+            let memory = memory.clone();
 
             tokio::spawn(async move {
                 verify_worker(
@@ -42,6 +45,7 @@ pub fn spawn_verify_pool(
                     config,
                     working_dir,
                     tasks_dir,
+                    memory,
                 )
                 .await;
             })
@@ -87,6 +91,7 @@ async fn verify_worker(
     config: Arc<Config>,
     working_dir: PathBuf,
     tasks_dir: PathBuf,
+    memory: MemoryHandle,
 ) {
     let verification_cmd = match &config.verification_cmd {
         Some(cmd) => cmd.clone(),
@@ -97,6 +102,12 @@ async fn verify_worker(
     };
 
     while let Ok(task) = rx.recv().await {
+        // Wait if memory pressure is high
+        if memory.is_paused() {
+            info!(worker = worker_id, "Waiting for memory pressure to ease...");
+            memory.wait_if_paused().await;
+            info!(worker = worker_id, "Resuming after memory recovery");
+        }
         let file_display = task.path.display().to_string();
         let mut attempts = {
             let state = state.lock().await;

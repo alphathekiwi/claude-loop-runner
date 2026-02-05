@@ -140,7 +140,8 @@ If you use GitButler, avoid `--git-branch` as it creates traditional git branche
 | `-p, --prompt <TEXT>` | Main prompt for Claude CLI | Required |
 | `-f, --fixup <TEXT>` | Prompt used when verification fails | None |
 | `-v, --verify <CMD>` | Verification command (`{file}`, `{file_stem}`, `{file_dir}` substituted) | None |
-| `-c, --concurrency <N>` | Number of parallel workers | 5 |
+| `-c, --concurrency <N>` | Number of parallel prompt workers | 5 |
+| `--verify-concurrency <N>` | Number of parallel verify workers | Same as `-c` |
 | `-m, --max-files <N>` | Maximum files to process | All |
 | `-a, --allowlist <PATTERN>` | Files Claude is allowed to modify | `{file_stem}*` |
 | `-d, --tasks-dir <DIR>` | Directory for task state files | `./claude-loop-tasks` |

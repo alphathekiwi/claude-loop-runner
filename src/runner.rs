@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::memory::MemoryMonitor;
 use crate::pools::{spawn_prompt_pool, spawn_verify_pool};
 use crate::process::expand_pattern;
 use crate::state::State;
@@ -7,6 +8,7 @@ use anyhow::Result;
 use async_channel::{bounded, Sender};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 
@@ -28,6 +30,11 @@ pub async fn run(
     let (prompt_tx, prompt_rx) = bounded::<FileTask>(100);
     let (verify_tx, verify_rx) = bounded::<FileTask>(100);
 
+    // Create memory monitor with hysteresis (85% high, 70% low)
+    let memory_monitor = MemoryMonitor::new();
+    let memory_handle = memory_monitor.handle();
+    let _monitor_handle = memory_monitor.spawn_monitor(85.0, 70.0, Duration::from_secs(2));
+
     // Queue pending files and build global allowlist for parallel worker support
     let files_to_process = queue_pending_files(
         &state,
@@ -44,9 +51,12 @@ pub async fn run(
         return Ok(());
     }
 
+    let verify_concurrency = config.verify_concurrency.unwrap_or(config.concurrency);
+
     info!(
         files = files_to_process,
-        concurrency = config.concurrency,
+        prompt_concurrency = config.concurrency,
+        verify_concurrency = verify_concurrency,
         "Starting processing"
     );
 
@@ -59,16 +69,18 @@ pub async fn run(
         state_path.clone(),
         Arc::clone(&config),
         working_dir.clone(),
+        memory_handle.clone(),
     );
 
     let verify_handles = spawn_verify_pool(
-        config.concurrency,
+        verify_concurrency,
         verify_rx.clone(),
         Arc::clone(&state),
         state_path.clone(),
         Arc::clone(&config),
         working_dir.clone(),
         tasks_dir,
+        memory_handle,
     );
 
     // Close senders so workers know when to stop

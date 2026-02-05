@@ -29,9 +29,13 @@ pub struct Cli {
     #[arg(short, long)]
     pub verify: Option<String>,
 
-    /// Number of workers per pool
+    /// Number of workers for prompt pool
     #[arg(short, long, default_value = "5")]
     pub concurrency: usize,
+
+    /// Number of workers for verify pool (defaults to concurrency value)
+    #[arg(long)]
+    pub verify_concurrency: Option<usize>,
 
     /// Maximum number of files to process
     #[arg(short, long)]

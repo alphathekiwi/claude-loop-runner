@@ -34,8 +34,11 @@ pub struct Config {
     pub verification_cmd: Option<String>,
     /// File allowlist pattern
     pub allowlist_pattern: String,
-    /// Number of workers per pool
+    /// Number of workers for prompt pool
     pub concurrency: usize,
+    /// Number of workers for verify pool (defaults to concurrency if not set)
+    #[serde(default)]
+    pub verify_concurrency: Option<usize>,
     /// Maximum files to process
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_files: Option<usize>,
@@ -72,6 +75,7 @@ impl Config {
             verification_cmd: cli.verify.clone(),
             allowlist_pattern: cli.allowlist.clone(),
             concurrency: cli.concurrency,
+            verify_concurrency: cli.verify_concurrency,
             max_files: cli.max_files,
             max_retries: cli.max_retries,
             git,
@@ -100,6 +104,10 @@ impl Config {
         // Only override concurrency if not default
         if cli.concurrency != 5 {
             self.concurrency = cli.concurrency;
+        }
+        // Override verify_concurrency if provided
+        if cli.verify_concurrency.is_some() {
+            self.verify_concurrency = cli.verify_concurrency;
         }
         if let Some(max_files) = cli.max_files {
             self.max_files = Some(max_files);
