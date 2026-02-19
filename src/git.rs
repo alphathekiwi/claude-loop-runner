@@ -2,6 +2,7 @@ use crate::process::extract_file_stem;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::io::{self, BufRead, Write as IoWrite};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
@@ -85,6 +86,189 @@ impl GitState {
         self.global_allowlist_patterns
             .iter()
             .any(|pattern| matches_allowlist(path, pattern))
+    }
+}
+
+/// Result of checking git identity configuration
+pub enum GitIdentityStatus {
+    /// Both user.name and user.email are configured
+    Configured { name: String, email: String },
+    /// One or both are missing
+    Missing {
+        name: Option<String>,
+        email: Option<String>,
+    },
+}
+
+/// User's choice when git identity is missing
+pub enum GitIdentityAction {
+    /// User provided name and email to configure
+    Configure { name: String, email: String },
+    /// User chose to disable git features for this run
+    DisableGit,
+}
+
+/// Get a single git config value, returning None if not set
+async fn get_git_config(working_dir: &Path, key: &str) -> Result<Option<String>> {
+    let output = Command::new("git")
+        .args(["config", "--get", key])
+        .current_dir(working_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .with_context(|| format!("Failed to check git config {}", key))?;
+
+    if output.status.success() {
+        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if value.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(value))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+/// Check if git user.name and user.email are configured
+pub async fn check_git_identity(working_dir: &Path) -> Result<GitIdentityStatus> {
+    let name = get_git_config(working_dir, "user.name").await?;
+    let email = get_git_config(working_dir, "user.email").await?;
+
+    match (&name, &email) {
+        (Some(n), Some(e)) => Ok(GitIdentityStatus::Configured {
+            name: n.clone(),
+            email: e.clone(),
+        }),
+        _ => Ok(GitIdentityStatus::Missing { name, email }),
+    }
+}
+
+/// Set git user.name and user.email at repository (local) scope
+pub async fn set_git_identity(working_dir: &Path, name: &str, email: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["config", "user.name", name])
+        .current_dir(working_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to set git user.name")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to set git user.name: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let output = Command::new("git")
+        .args(["config", "user.email", email])
+        .current_dir(working_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to set git user.email")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to set git user.email: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    info!(name = %name, email = %email, "Set git identity (local scope)");
+    Ok(())
+}
+
+/// Interactively prompt the user to configure git identity or disable git features.
+/// Output goes to stderr to avoid polluting piped stdout.
+pub fn prompt_git_identity(
+    missing_name: bool,
+    missing_email: bool,
+) -> Result<GitIdentityAction> {
+    let mut stderr = io::stderr();
+
+    writeln!(stderr)?;
+    writeln!(
+        stderr,
+        "Git identity is not fully configured."
+    )?;
+    if missing_name {
+        writeln!(stderr, "  - user.name is not set")?;
+    }
+    if missing_email {
+        writeln!(stderr, "  - user.email is not set")?;
+    }
+    writeln!(stderr)?;
+    writeln!(
+        stderr,
+        "Git commits require both user.name and user.email."
+    )?;
+    writeln!(stderr, "You can:")?;
+    writeln!(
+        stderr,
+        "  [1] Provide name and email now (saved to this repo's .git/config)"
+    )?;
+    writeln!(stderr, "  [2] Disable git features for this run")?;
+    writeln!(stderr)?;
+
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+    let mut input = String::new();
+
+    loop {
+        write!(stderr, "Choose [1/2]: ")?;
+        stderr.flush()?;
+        input.clear();
+        reader.read_line(&mut input)?;
+        let choice = input.trim();
+
+        match choice {
+            "1" => {
+                let name = if missing_name {
+                    loop {
+                        write!(stderr, "Enter user.name: ")?;
+                        stderr.flush()?;
+                        input.clear();
+                        reader.read_line(&mut input)?;
+                        let val = input.trim().to_string();
+                        if !val.is_empty() {
+                            break val;
+                        }
+                        writeln!(stderr, "Name cannot be empty.")?;
+                    }
+                } else {
+                    String::new()
+                };
+
+                let email = if missing_email {
+                    loop {
+                        write!(stderr, "Enter user.email: ")?;
+                        stderr.flush()?;
+                        input.clear();
+                        reader.read_line(&mut input)?;
+                        let val = input.trim().to_string();
+                        if !val.is_empty() {
+                            break val;
+                        }
+                        writeln!(stderr, "Email cannot be empty.")?;
+                    }
+                } else {
+                    String::new()
+                };
+
+                return Ok(GitIdentityAction::Configure { name, email });
+            }
+            "2" => {
+                return Ok(GitIdentityAction::DisableGit);
+            }
+            _ => {
+                writeln!(stderr, "Invalid choice. Please enter 1 or 2.")?;
+            }
+        }
     }
 }
 

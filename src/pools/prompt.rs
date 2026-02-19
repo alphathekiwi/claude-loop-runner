@@ -122,7 +122,7 @@ async fn prompt_worker(
                 let result = parse_result(&output.stdout);
 
                 // Update state with result
-                {
+                let (prompt_done, total_files) = {
                     let mut state = state.lock().await;
                     state.set_result(&task.path, result);
 
@@ -137,7 +137,21 @@ async fn prompt_worker(
                     if let Err(e) = state.save(&state_path) {
                         error!(error = %e, "Failed to save state");
                     }
-                }
+
+                    // Count files that have completed the prompt phase
+                    let total = state.files.len();
+                    let not_prompted = state
+                        .files
+                        .values()
+                        .filter(|f| {
+                            matches!(
+                                f.status,
+                                FileStatus::Pending | FileStatus::PromptInProgress
+                            )
+                        })
+                        .count();
+                    (total - not_prompted, total)
+                };
 
                 if config.verification_cmd.is_some() {
                     // Send to verification queue
@@ -146,7 +160,7 @@ async fn prompt_worker(
                     }
                 }
 
-                info!(worker = worker_id, file = %file_display, "Prompt task complete");
+                info!(worker = worker_id, file = %file_display, "Prompt task [{prompt_done} of {total_files}] complete");
             }
             Err(e) => {
                 error!(worker = worker_id, file = %file_display, error = %e, "Prompt task failed");

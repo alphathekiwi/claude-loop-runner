@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
         .clone()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
-    let (config, state, state_path, task_id) = if cli.is_resume() {
+    let (mut config, state, state_path, task_id) = if cli.is_resume() {
         // Resume mode
         if let Some(specific_task_id) = cli.resume_task_id() {
             // Resume a specific task
@@ -121,6 +121,80 @@ async fn main() -> Result<()> {
 
         (config, state, state_path, task_id)
     };
+
+    // Handle --no-git override
+    if cli.no_git {
+        if cli.git || cli.git_branch || cli.git_commit {
+            warn!("--no-git specified: all git features disabled for this run");
+        }
+        config.git.enabled = false;
+        config.git.auto_branch = false;
+        config.git.auto_commit = false;
+    }
+
+    // Check git identity before enabling git features
+    if config.git.enabled || config.git.auto_branch || config.git.auto_commit {
+        if git::is_git_repo(&working_dir).await.unwrap_or(false) {
+            match git::check_git_identity(&working_dir).await {
+                Ok(git::GitIdentityStatus::Configured { name, email }) => {
+                    info!(name = %name, email = %email, "Git identity configured");
+                }
+                Ok(git::GitIdentityStatus::Missing { name, email }) => {
+                    let missing_name = name.is_none();
+                    let missing_email = email.is_none();
+
+                    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                        warn!("Git identity not configured and stdin is not a terminal; disabling git features");
+                        config.git.enabled = false;
+                        config.git.auto_branch = false;
+                        config.git.auto_commit = false;
+                    } else {
+                        match git::prompt_git_identity(missing_name, missing_email) {
+                            Ok(git::GitIdentityAction::Configure {
+                                name: new_name,
+                                email: new_email,
+                            }) => {
+                                let final_name = if missing_name {
+                                    &new_name
+                                } else {
+                                    name.as_ref().unwrap()
+                                };
+                                let final_email = if missing_email {
+                                    &new_email
+                                } else {
+                                    email.as_ref().unwrap()
+                                };
+                                if let Err(e) =
+                                    git::set_git_identity(&working_dir, final_name, final_email)
+                                        .await
+                                {
+                                    warn!(error = %e, "Failed to set git identity, disabling git features");
+                                    config.git.enabled = false;
+                                    config.git.auto_branch = false;
+                                    config.git.auto_commit = false;
+                                }
+                            }
+                            Ok(git::GitIdentityAction::DisableGit) => {
+                                warn!("Git features disabled by user choice (missing identity)");
+                                config.git.enabled = false;
+                                config.git.auto_branch = false;
+                                config.git.auto_commit = false;
+                            }
+                            Err(e) => {
+                                warn!(error = %e, "Failed to prompt for git identity, disabling git features");
+                                config.git.enabled = false;
+                                config.git.auto_branch = false;
+                                config.git.auto_commit = false;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to check git identity, continuing (commits may fail)");
+                }
+            }
+        }
+    }
 
     // Capture git state and set up branch if git features are enabled
     let mut state = state;

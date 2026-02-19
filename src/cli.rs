@@ -80,9 +80,19 @@ pub struct Cli {
     /// Custom commit message template (supports {file}, {file_stem}, {task_id})
     #[arg(long)]
     pub git_commit_message: Option<String>,
+
+    /// Disable all git features (overrides --git, --git-commit, --git-branch)
+    #[arg(long)]
+    pub no_git: bool,
 }
 
 impl Cli {
+    /// Check if any git feature is requested (and not overridden by --no-git)
+    #[allow(dead_code)]
+    pub fn git_features_requested(&self) -> bool {
+        !self.no_git && (self.git || self.git_branch || self.git_commit)
+    }
+
     /// Check if we're in resume mode
     pub fn is_resume(&self) -> bool {
         self.resume.is_some()
