@@ -7,8 +7,18 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Get the directory where the script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Ensure we're in the claude-loop-runner project directory
+if [[ "$(basename "$PWD")" != "claude-loop-runner" ]]; then
+    if [[ -d "$PWD/claude-loop-runner" && -f "$PWD/claude-loop-runner/Cargo.toml" ]]; then
+        echo -e "${YELLOW}Found claude-loop-runner/ in current directory, changing to it${NC}"
+        cd "$PWD/claude-loop-runner"
+    else
+        echo -e "${RED}Error: Not in claude-loop-runner directory and couldn't find claude-loop-runner/Cargo.toml in $PWD${NC}"
+        exit 1
+    fi
+fi
+
+SCRIPT_DIR="$PWD"
 CARGO_TOML="$SCRIPT_DIR/Cargo.toml"
 
 # Check if Cargo.toml exists
@@ -94,6 +104,15 @@ git push origin HEAD
 git push origin "$TAG"
 
 echo -e "${GREEN}Pushed to GitHub${NC}"
+
+# Update local install if claude-loop-runner is installed
+if command -v claude-loop-runner &> /dev/null; then
+    echo ""
+    echo "Updating local install..."
+    cargo install --path "$SCRIPT_DIR"
+    echo -e "${GREEN}Local binary updated to v$NEW_VERSION${NC}"
+fi
+
 echo ""
 echo -e "${GREEN}Release v$NEW_VERSION created!${NC}"
 echo "GitHub Actions will now build and publish the release."
