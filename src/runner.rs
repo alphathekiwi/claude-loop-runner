@@ -26,27 +26,21 @@ pub async fn run(
     // Get current working directory for ACP server
     let working_dir = std::env::current_dir()?;
 
-    // Create channels
-    let (prompt_tx, prompt_rx) = bounded::<FileTask>(100);
-    let (verify_tx, verify_rx) = bounded::<FileTask>(100);
-
     // Create memory monitor with hysteresis (85% high, 70% low)
     let memory_monitor = MemoryMonitor::new();
     let memory_handle = memory_monitor.handle();
     let _monitor_handle = memory_monitor.spawn_monitor(85.0, 70.0, Duration::from_secs(2));
 
-    // Queue pending files and build global allowlist for parallel worker support
-    let files_to_process = queue_pending_files(
+    // Build global allowlist (no channel needed, just state mutation)
+    let file_count = build_allowlist(
         &state,
-        &prompt_tx,
-        &verify_tx,
         config.max_files,
         &config.allowlist_pattern,
         &state_path,
     )
     .await?;
 
-    if files_to_process == 0 {
+    if file_count == 0 {
         info!("No files to process");
         return Ok(());
     }
@@ -54,13 +48,17 @@ pub async fn run(
     let verify_concurrency = config.verify_concurrency.unwrap_or(config.concurrency);
 
     info!(
-        files = files_to_process,
+        files = file_count,
         prompt_concurrency = config.concurrency,
         verify_concurrency = verify_concurrency,
         "Starting processing"
     );
 
-    // Spawn worker pools
+    // Create channels sized to fit all files (avoids deadlock)
+    let (prompt_tx, prompt_rx) = bounded::<FileTask>(file_count);
+    let (verify_tx, verify_rx) = bounded::<FileTask>(file_count);
+
+    // Spawn worker pools BEFORE queuing so consumers are ready
     let prompt_handles = spawn_prompt_pool(
         config.concurrency,
         prompt_rx.clone(),
@@ -82,6 +80,15 @@ pub async fn run(
         tasks_dir,
         memory_handle,
     );
+
+    // Now queue files — workers are already consuming
+    queue_files(
+        &state,
+        &prompt_tx,
+        &verify_tx,
+        config.max_files,
+    )
+    .await?;
 
     // Close senders so workers know when to stop
     drop(prompt_tx);
@@ -121,20 +128,18 @@ pub async fn run(
     Ok(())
 }
 
-/// Queue files that need processing and build global allowlist
-async fn queue_pending_files(
+/// Build the global allowlist and return the count of files to process.
+/// Does NOT queue files to channels — just updates state.
+async fn build_allowlist(
     state: &Arc<Mutex<State>>,
-    prompt_tx: &Sender<FileTask>,
-    verify_tx: &Sender<FileTask>,
     max_files: Option<usize>,
     allowlist_pattern: &str,
     state_path: &Path,
 ) -> Result<usize> {
     let mut state = state.lock().await;
-    let mut queued = 0;
 
-    // First pass: collect all files that will be processed and build global allowlist
-    let files_to_queue: Vec<_> = state
+    // Collect files that need processing
+    let mut files_to_process: Vec<_> = state
         .files
         .iter()
         .filter(|(_, file_state)| {
@@ -143,14 +148,19 @@ async fn queue_pending_files(
                 FileStatus::Completed | FileStatus::Failed
             )
         })
-        .map(|(path, file_state)| (path.clone(), file_state.clone()))
+        .map(|(path, _)| path.clone())
         .collect();
 
-    // Build global allowlist from all files being processed (skip if already built)
+    // Apply max files limit
+    if let Some(max) = max_files {
+        files_to_process.truncate(max);
+    }
+
+    // Build global allowlist (skip if already built)
     if state.git_state.enabled {
         if state.git_state.global_allowlist_patterns.is_empty() {
             let working_dir = std::env::current_dir().unwrap_or_default();
-            for (path, _) in &files_to_queue {
+            for path in &files_to_process {
                 let pattern = expand_pattern(allowlist_pattern, path);
                 state.git_state.add_allowlist_pattern(pattern.clone());
                 debug!(pattern = %pattern, "Added to global allowlist");
@@ -162,7 +172,6 @@ async fn queue_pending_files(
                 }
             }
 
-            // Save state with updated allowlist
             if let Err(e) = state.save(state_path) {
                 tracing::error!(error = %e, "Failed to save state with global allowlist");
             } else {
@@ -179,9 +188,20 @@ async fn queue_pending_files(
         }
     }
 
-    // Second pass: queue the files
-    for (path, file_state) in files_to_queue {
-        // Check max files limit
+    Ok(files_to_process.len())
+}
+
+/// Queue files to the appropriate worker channels
+async fn queue_files(
+    state: &Arc<Mutex<State>>,
+    prompt_tx: &Sender<FileTask>,
+    verify_tx: &Sender<FileTask>,
+    max_files: Option<usize>,
+) -> Result<usize> {
+    let state = state.lock().await;
+    let mut queued = 0;
+
+    for (path, file_state) in &state.files {
         if let Some(max) = max_files {
             if queued >= max {
                 break;
@@ -190,7 +210,6 @@ async fn queue_pending_files(
 
         match file_state.status {
             FileStatus::Pending | FileStatus::PromptInProgress => {
-                // Needs to go through prompt
                 let task = FileTask {
                     path: path.clone(),
                     original_data: file_state.original_data.clone(),
@@ -201,7 +220,6 @@ async fn queue_pending_files(
             FileStatus::AwaitingVerification
             | FileStatus::VerifyInProgress
             | FileStatus::FixupInProgress => {
-                // Already prompted, needs verification
                 let task = FileTask {
                     path: path.clone(),
                     original_data: file_state.original_data.clone(),
@@ -209,9 +227,7 @@ async fn queue_pending_files(
                 verify_tx.send(task).await?;
                 queued += 1;
             }
-            FileStatus::Completed | FileStatus::Failed => {
-                // Already done, skip
-            }
+            FileStatus::Completed | FileStatus::Failed => {}
         }
     }
 
