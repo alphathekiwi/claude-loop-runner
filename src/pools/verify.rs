@@ -5,6 +5,7 @@ use crate::memory::MemoryHandle;
 use crate::process::{expand_pattern_with_allowlist, parse_result, run_command};
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
+use crate::usage::UsageHandle;
 use async_channel::Receiver;
 use chrono::Utc;
 use std::fs::{self, OpenOptions};
@@ -25,6 +26,7 @@ pub fn spawn_verify_pool(
     working_dir: PathBuf,
     tasks_dir: PathBuf,
     memory: MemoryHandle,
+    usage: UsageHandle,
 ) -> Vec<JoinHandle<()>> {
     (0..concurrency)
         .map(|worker_id| {
@@ -35,6 +37,7 @@ pub fn spawn_verify_pool(
             let working_dir = working_dir.clone();
             let tasks_dir = tasks_dir.clone();
             let memory = memory.clone();
+            let usage = usage.clone();
 
             tokio::spawn(async move {
                 verify_worker(
@@ -46,6 +49,7 @@ pub fn spawn_verify_pool(
                     working_dir,
                     tasks_dir,
                     memory,
+                    usage,
                 )
                 .await;
             })
@@ -92,6 +96,7 @@ async fn verify_worker(
     working_dir: PathBuf,
     tasks_dir: PathBuf,
     memory: MemoryHandle,
+    usage: UsageHandle,
 ) {
     let verification_cmd = match &config.verification_cmd {
         Some(cmd) => cmd.clone(),
@@ -107,6 +112,13 @@ async fn verify_worker(
             info!(worker = worker_id, "Waiting for memory pressure to ease...");
             memory.wait_if_paused().await;
             info!(worker = worker_id, "Resuming after memory recovery");
+        }
+
+        // Wait if API usage limit exceeded
+        if usage.is_paused() {
+            info!(worker = worker_id, "Waiting for API usage quota to reset...");
+            usage.wait_if_paused().await;
+            info!(worker = worker_id, "Resuming after usage quota reset");
         }
         let file_display = task.path.display().to_string();
         let mut attempts = {
@@ -284,6 +296,13 @@ async fn verify_worker(
                 &task.path,
                 &format!("FIXUP PROMPT SENT:\n{}", fixup_prompt),
             );
+
+            // Wait if API usage limit exceeded before calling Claude for fixup
+            if usage.is_paused() {
+                info!(worker = worker_id, "Waiting for API usage quota to reset before fixup...");
+                usage.wait_if_paused().await;
+                info!(worker = worker_id, "Resuming fixup after usage quota reset");
+            }
 
             // Run fixup
             match run_claude(&fixup_prompt, &working_dir).await {

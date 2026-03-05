@@ -5,6 +5,7 @@ use crate::memory::MemoryHandle;
 use crate::process::{expand_pattern, parse_result};
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
+use crate::usage::UsageHandle;
 use async_channel::{Receiver, Sender};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,6 +23,7 @@ pub fn spawn_prompt_pool(
     config: Arc<Config>,
     working_dir: PathBuf,
     memory: MemoryHandle,
+    usage: UsageHandle,
 ) -> Vec<JoinHandle<()>> {
     (0..concurrency)
         .map(|worker_id| {
@@ -32,6 +34,7 @@ pub fn spawn_prompt_pool(
             let config = Arc::clone(&config);
             let working_dir = working_dir.clone();
             let memory = memory.clone();
+            let usage = usage.clone();
 
             tokio::spawn(async move {
                 prompt_worker(
@@ -43,6 +46,7 @@ pub fn spawn_prompt_pool(
                     config,
                     working_dir,
                     memory,
+                    usage,
                 )
                 .await;
             })
@@ -59,6 +63,7 @@ async fn prompt_worker(
     config: Arc<Config>,
     working_dir: PathBuf,
     memory: MemoryHandle,
+    usage: UsageHandle,
 ) {
     while let Ok(task) = rx.recv().await {
         // Wait if memory pressure is high
@@ -66,6 +71,13 @@ async fn prompt_worker(
             info!(worker = worker_id, "Waiting for memory pressure to ease...");
             memory.wait_if_paused().await;
             info!(worker = worker_id, "Resuming after memory recovery");
+        }
+
+        // Wait if API usage limit exceeded
+        if usage.is_paused() {
+            info!(worker = worker_id, "Waiting for API usage quota to reset...");
+            usage.wait_if_paused().await;
+            info!(worker = worker_id, "Resuming after usage quota reset");
         }
 
         let file_display = task.path.display().to_string();

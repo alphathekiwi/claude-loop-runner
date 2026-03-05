@@ -9,6 +9,7 @@ mod runner;
 mod state;
 mod task_list;
 mod types;
+mod usage;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -297,6 +298,7 @@ async fn main() -> Result<()> {
         state_path.clone(),
         cli.tasks_dir.clone(),
         shutdown_rx,
+        if cli.limit > 0.0 { Some(cli.limit) } else { None },
     )
     .await;
 

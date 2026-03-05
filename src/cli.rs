@@ -84,6 +84,12 @@ pub struct Cli {
     /// Disable all git features (overrides --git, --git-commit, --git-branch)
     #[arg(long)]
     pub no_git: bool,
+
+    /// Usage limit percentage (0-100). Pauses workers when Claude API utilization
+    /// exceeds this threshold on either the 5-hour or 7-day window, and sleeps
+    /// until the quota resets. Set to 0 to disable.
+    #[arg(long, value_name = "PERCENT", default_value = "95")]
+    pub limit: f64,
 }
 
 impl Cli {

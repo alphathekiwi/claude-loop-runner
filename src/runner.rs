@@ -4,6 +4,7 @@ use crate::pools::{spawn_prompt_pool, spawn_verify_pool};
 use crate::process::expand_pattern;
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
+use crate::usage::{self, UsageMonitor};
 use anyhow::Result;
 use async_channel::{bounded, Sender};
 use std::path::{Path, PathBuf};
@@ -19,6 +20,7 @@ pub async fn run(
     state_path: PathBuf,
     tasks_dir: PathBuf,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+    usage_limit: Option<f64>,
 ) -> Result<()> {
     let config = Arc::new(config);
     let state = Arc::new(Mutex::new(state));
@@ -30,6 +32,18 @@ pub async fn run(
     let memory_monitor = MemoryMonitor::new();
     let memory_handle = memory_monitor.handle();
     let _monitor_handle = memory_monitor.spawn_monitor(85.0, 70.0, Duration::from_secs(2));
+
+    // Create usage monitor if --limit is set
+    let usage_handle = if let Some(limit) = usage_limit {
+        let usage_monitor = UsageMonitor::new();
+        let handle = usage_monitor.handle();
+        let _usage_monitor_handle =
+            usage_monitor.spawn_monitor(limit, Duration::from_secs(30));
+        info!(limit = format!("{:.0}%", limit), "Usage limit monitoring enabled");
+        handle
+    } else {
+        usage::noop_handle()
+    };
 
     // Build global allowlist (no channel needed, just state mutation)
     let file_count = build_allowlist(
@@ -68,6 +82,7 @@ pub async fn run(
         Arc::clone(&config),
         working_dir.clone(),
         memory_handle.clone(),
+        usage_handle.clone(),
     );
 
     let verify_handles = spawn_verify_pool(
@@ -79,6 +94,7 @@ pub async fn run(
         working_dir.clone(),
         tasks_dir,
         memory_handle,
+        usage_handle,
     );
 
     // Now queue files — workers are already consuming
