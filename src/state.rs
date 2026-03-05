@@ -37,7 +37,14 @@ impl State {
     }
 
     /// Set the git state (called after capturing initial git status)
-    pub fn set_git_state(&mut self, git_state: GitState) {
+    /// Preserves existing global_allowlist_patterns from a prior run
+    pub fn set_git_state(&mut self, mut git_state: GitState) {
+        if git_state.global_allowlist_patterns.is_empty()
+            && !self.git_state.global_allowlist_patterns.is_empty()
+        {
+            git_state.global_allowlist_patterns =
+                std::mem::take(&mut self.git_state.global_allowlist_patterns);
+        }
         self.git_state = git_state;
     }
 

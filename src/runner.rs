@@ -146,21 +146,35 @@ async fn queue_pending_files(
         .map(|(path, file_state)| (path.clone(), file_state.clone()))
         .collect();
 
-    // Build global allowlist from all files being processed
+    // Build global allowlist from all files being processed (skip if already built)
     if state.git_state.enabled {
-        for (path, _) in &files_to_queue {
-            let pattern = expand_pattern(allowlist_pattern, path);
-            state.git_state.add_allowlist_pattern(pattern.clone());
-            debug!(pattern = %pattern, "Added to global allowlist");
-        }
+        if state.git_state.global_allowlist_patterns.is_empty() {
+            let working_dir = std::env::current_dir().unwrap_or_default();
+            for (path, _) in &files_to_queue {
+                let pattern = expand_pattern(allowlist_pattern, path);
+                state.git_state.add_allowlist_pattern(pattern.clone());
+                debug!(pattern = %pattern, "Added to global allowlist");
 
-        // Save state with updated allowlist
-        if let Err(e) = state.save(state_path) {
-            tracing::error!(error = %e, "Failed to save state with global allowlist");
+                // Discover related test/snapshot files and add their patterns
+                for related in crate::process::find_related_files(path, &working_dir) {
+                    let related_pattern = expand_pattern(allowlist_pattern, &related);
+                    state.git_state.add_allowlist_pattern(related_pattern);
+                }
+            }
+
+            // Save state with updated allowlist
+            if let Err(e) = state.save(state_path) {
+                tracing::error!(error = %e, "Failed to save state with global allowlist");
+            } else {
+                info!(
+                    patterns = state.git_state.global_allowlist_patterns.len(),
+                    "Built global allowlist for parallel workers (with related file discovery)"
+                );
+            }
         } else {
             info!(
                 patterns = state.git_state.global_allowlist_patterns.len(),
-                "Built global allowlist for parallel workers"
+                "Using existing global allowlist from saved state"
             );
         }
     }

@@ -90,7 +90,7 @@ cargo check --quiet
 
 # Commit the version bump
 git add "$CARGO_TOML" "$SCRIPT_DIR/Cargo.lock"
-git commit -m "chore: bump version to $NEW_VERSION"
+git commit -m "Release version: $NEW_VERSION"
 
 echo -e "${GREEN}Committed version bump${NC}"
 

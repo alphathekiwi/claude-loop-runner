@@ -110,6 +110,27 @@ async fn main() -> Result<()> {
             info!(input = %input.display(), files = state.files.len(), "Loaded input file");
         }
 
+        // Build global allowlist from all files (+ related tests/snapshots) so it's available on resume
+        if cli.git || cli.git_branch || cli.git_commit {
+            let file_paths: Vec<_> = state.files.keys().cloned().collect();
+            for path in &file_paths {
+                let expanded = process::expand_pattern(&cli.allowlist, path);
+                state.git_state.add_allowlist_pattern(expanded);
+
+                // Discover related test/snapshot files and add their patterns too
+                for related in process::find_related_files(path, &working_dir) {
+                    let related_pattern = process::expand_pattern(&cli.allowlist, &related);
+                    state.git_state.add_allowlist_pattern(related_pattern);
+                }
+            }
+            if !state.git_state.global_allowlist_patterns.is_empty() {
+                info!(
+                    patterns = state.git_state.global_allowlist_patterns.len(),
+                    "Built global allowlist during task creation (with related file discovery)"
+                );
+            }
+        }
+
         // Save task list and initial state
         task_list.save(&cli.tasks_dir)?;
         state.config = config.clone();

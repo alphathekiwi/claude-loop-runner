@@ -158,6 +158,106 @@ fn collect_glob_matches(pattern: &str) -> Vec<String> {
     }
 }
 
+/// Discover related files for a source file using multiple conventions.
+/// Searches for test files and snapshots in:
+/// 1. Colocated: src/components/Foo.test.tsx (same directory)
+/// 2. Sibling Tests/ dir: src/Tests/Foo.test.tsx
+/// 3. Sibling __tests__/ dir: src/__tests__/Foo.test.tsx
+/// 4. Mirrored __tests__: src/__tests__/components/Foo.test.tsx
+/// Then for each found test, looks for snapshots in __snapshots__/.
+pub fn find_related_files(source_path: &Path, working_dir: &Path) -> Vec<PathBuf> {
+    let stem = match source_path.file_stem().and_then(|s| s.to_str()) {
+        Some(s) => extract_file_stem(&PathBuf::from(s)),
+        None => return Vec::new(),
+    };
+
+    // Skip files that are already test/spec files
+    let stem_raw = source_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if stem_raw.ends_with(".test") || stem_raw.ends_with(".spec") {
+        return Vec::new();
+    }
+
+    let ext = source_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let parent = match source_path.parent() {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+
+    // Build candidate test filenames
+    let mut test_names = vec![
+        format!("{}.test.{}", stem, ext),
+        format!("{}.spec.{}", stem, ext),
+    ];
+    // Also try .ts/.tsx variants if ext differs
+    for variant in &["ts", "tsx", "js", "jsx"] {
+        if *variant != ext {
+            test_names.push(format!("{}.test.{}", stem, variant));
+            test_names.push(format!("{}.spec.{}", stem, variant));
+        }
+    }
+    test_names.dedup();
+
+    let mut found = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut candidates = Vec::new();
+
+    // 1. Colocated: same directory
+    for name in &test_names {
+        candidates.push(parent.join(name));
+    }
+
+    // 2-3. Sibling directories: go up one level, check Tests/ and __tests__/
+    if let Some(grandparent) = parent.parent() {
+        for sibling in &["Tests", "__tests__"] {
+            for name in &test_names {
+                candidates.push(grandparent.join(sibling).join(name));
+            }
+        }
+    }
+
+    // 4. Mirrored __tests__: src/a/b/Foo.tsx -> src/__tests__/a/b/Foo.test.tsx
+    if let Ok(stripped) = source_path.strip_prefix("src") {
+        if let Some(rel_parent) = stripped.parent() {
+            for name in &test_names {
+                candidates.push(Path::new("src/__tests__").join(rel_parent).join(name));
+            }
+        }
+    }
+
+    // Check all candidates against filesystem
+    for candidate in candidates {
+        let full = working_dir.join(&candidate);
+        if full.exists() && seen.insert(candidate.clone()) {
+            found.push(candidate);
+        }
+    }
+
+    // 5. Find snapshots for any discovered test files
+    let test_files: Vec<PathBuf> = found.clone();
+    for test_path in &test_files {
+        if let (Some(test_parent), Some(test_filename)) =
+            (test_path.parent(), test_path.file_name())
+        {
+            let snap_candidate = test_parent
+                .join("__snapshots__")
+                .join(format!("{}.snap", test_filename.to_string_lossy()));
+            let full = working_dir.join(&snap_candidate);
+            if full.exists() && seen.insert(snap_candidate.clone()) {
+                found.push(snap_candidate);
+            }
+        }
+    }
+
+    found
+}
+
 /// Run a shell command and capture output
 pub async fn run_command(command: &str) -> Result<ProcessOutput> {
     let output = Command::new("sh")
@@ -436,6 +536,114 @@ RESULT: {"second": 2}
             expand_allowlist_to_glob(&path, "src/**/*.ts"),
             "src/**/*.ts"
         );
+    }
+
+    #[test]
+    fn test_find_related_files_colocated() {
+        // Create a temp dir with a colocated test file
+        let dir = tempfile::tempdir().unwrap();
+        let src_dir = dir.path().join("src/components");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("Foo.tsx"), "").unwrap();
+        std::fs::write(src_dir.join("Foo.test.tsx"), "").unwrap();
+
+        let related = find_related_files(
+            &PathBuf::from("src/components/Foo.tsx"),
+            dir.path(),
+        );
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0], PathBuf::from("src/components/Foo.test.tsx"));
+    }
+
+    #[test]
+    fn test_find_related_files_sibling_tests_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let src_dir = dir.path().join("src/Components");
+        let tests_dir = dir.path().join("src/__tests__");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&tests_dir).unwrap();
+        std::fs::write(src_dir.join("Bar.tsx"), "").unwrap();
+        std::fs::write(tests_dir.join("Bar.test.tsx"), "").unwrap();
+
+        let related = find_related_files(
+            &PathBuf::from("src/Components/Bar.tsx"),
+            dir.path(),
+        );
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0], PathBuf::from("src/__tests__/Bar.test.tsx"));
+    }
+
+    #[test]
+    fn test_find_related_files_mirrored() {
+        let dir = tempfile::tempdir().unwrap();
+        let src_dir = dir.path().join("src/containers/Cms");
+        let test_dir = dir.path().join("src/__tests__/containers/Cms");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&test_dir).unwrap();
+        std::fs::write(src_dir.join("Editor.tsx"), "").unwrap();
+        std::fs::write(test_dir.join("Editor.test.tsx"), "").unwrap();
+
+        let related = find_related_files(
+            &PathBuf::from("src/containers/Cms/Editor.tsx"),
+            dir.path(),
+        );
+        assert_eq!(related.len(), 1);
+        assert_eq!(
+            related[0],
+            PathBuf::from("src/__tests__/containers/Cms/Editor.test.tsx")
+        );
+    }
+
+    #[test]
+    fn test_find_related_files_with_snapshots() {
+        let dir = tempfile::tempdir().unwrap();
+        let src_dir = dir.path().join("src/components");
+        let snap_dir = dir.path().join("src/components/__snapshots__");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&snap_dir).unwrap();
+        std::fs::write(src_dir.join("Widget.tsx"), "").unwrap();
+        std::fs::write(src_dir.join("Widget.test.tsx"), "").unwrap();
+        std::fs::write(snap_dir.join("Widget.test.tsx.snap"), "").unwrap();
+
+        let related = find_related_files(
+            &PathBuf::from("src/components/Widget.tsx"),
+            dir.path(),
+        );
+        assert_eq!(related.len(), 2);
+        assert!(related.contains(&PathBuf::from("src/components/Widget.test.tsx")));
+        assert!(related.contains(&PathBuf::from(
+            "src/components/__snapshots__/Widget.test.tsx.snap"
+        )));
+    }
+
+    #[test]
+    fn test_find_related_files_skips_test_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("Foo.test.tsx"), "").unwrap();
+
+        // Should return empty - test files don't need related file discovery
+        let related = find_related_files(
+            &PathBuf::from("src/Foo.test.tsx"),
+            dir.path(),
+        );
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn test_find_related_files_no_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("Foo.tsx"), "").unwrap();
+
+        // No test files exist
+        let related = find_related_files(
+            &PathBuf::from("src/Foo.tsx"),
+            dir.path(),
+        );
+        assert!(related.is_empty());
     }
 
     #[test]
