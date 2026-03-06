@@ -144,6 +144,46 @@ async fn main() -> Result<()> {
         (config, state, state_path, task_id)
     };
 
+    // Auto-launch into tmux if not already in one
+    if !cli.no_tmux && !cli.dry_run && std::env::var("TMUX").is_err() {
+        if let Ok(output) = std::process::Command::new("tmux").arg("-V").output() {
+            if output.status.success() {
+                let session_name = build_tmux_session_name(&working_dir, &task_id);
+                let exe = std::env::current_exe()
+                    .unwrap_or_else(|_| "claude-loop-runner".into());
+                let mut cmd = format!(
+                    "{} --resume {} --no-tmux --tasks-dir {} -w {}",
+                    exe.display(),
+                    task_id,
+                    cli.tasks_dir.display(),
+                    working_dir.display(),
+                );
+                if cli.no_git {
+                    cmd.push_str(" --no-git");
+                }
+                if cli.limit > 0.0 {
+                    cmd.push_str(&format!(" --limit {}", cli.limit));
+                }
+                let result = std::process::Command::new("tmux")
+                    .args(["new-session", "-d", "-s", &session_name, &cmd])
+                    .status();
+                match result {
+                    Ok(status) if status.success() => {
+                        info!(session = %session_name, "Launched in tmux session");
+                        info!("Attach with: tmux attach -t {}", session_name);
+                        std::process::exit(0);
+                    }
+                    Ok(status) => {
+                        warn!(code = ?status.code(), "tmux new-session failed, continuing without tmux");
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to launch tmux, continuing without tmux");
+                    }
+                }
+            }
+        }
+    }
+
     // Handle --no-git override
     if cli.no_git {
         if cli.git || cli.git_branch || cli.git_commit {
@@ -155,8 +195,9 @@ async fn main() -> Result<()> {
     }
 
     // Check git identity before enabling git features
-    if config.git.enabled || config.git.auto_branch || config.git.auto_commit {
-        if git::is_git_repo(&working_dir).await.unwrap_or(false) {
+    if (config.git.enabled || config.git.auto_branch || config.git.auto_commit)
+        && git::is_git_repo(&working_dir).await.unwrap_or(false)
+    {
             match git::check_git_identity(&working_dir).await {
                 Ok(git::GitIdentityStatus::Configured { name, email }) => {
                     info!(name = %name, email = %email, "Git identity configured");
@@ -215,7 +256,6 @@ async fn main() -> Result<()> {
                     warn!(error = %e, "Failed to check git identity, continuing (commits may fail)");
                 }
             }
-        }
     }
 
     // Capture git state and set up branch if git features are enabled
@@ -321,4 +361,52 @@ async fn main() -> Result<()> {
     }
 
     result
+}
+
+/// Build a tmux session name from the working directory and task ID.
+///
+/// Takes first letter of each path component (lowercased) except the last,
+/// joins with `-`, appends the full last component, then `_` + task number.
+///
+/// Example: `/Users/aaronsaunders/Documents/personal/claude-loop-runner` + `task_3`
+///   → `d-p-claude-loop-runner_3`
+fn build_tmux_session_name(working_dir: &std::path::Path, task_id: &str) -> String {
+    let components: Vec<String> = working_dir
+        .components()
+        .filter_map(|c| {
+            let s = c.as_os_str().to_str()?;
+            // Skip root `/` and home-like prefixes (Users, home, username)
+            if s == "/" || s == "Users" || s == "home" {
+                return None;
+            }
+            Some(s.to_lowercase())
+        })
+        .collect();
+
+    // Also skip the username component (first after Users/home)
+    let parts = if components.len() > 1 {
+        &components[1..]
+    } else {
+        &components[..]
+    };
+
+    let task_num = task_id
+        .strip_prefix("task_")
+        .unwrap_or(task_id);
+
+    if parts.is_empty() {
+        return format!("clr_{}", task_num);
+    }
+
+    let last = parts.last().unwrap();
+    let prefixes: Vec<&str> = parts[..parts.len() - 1]
+        .iter()
+        .filter_map(|p| p.get(..1))
+        .collect();
+
+    if prefixes.is_empty() {
+        format!("{}_{}", last, task_num)
+    } else {
+        format!("{}-{}_{}", prefixes.join("-"), last, task_num)
+    }
 }

@@ -22,18 +22,6 @@ impl MemoryMonitor {
         }
     }
 
-    /// Check if workers should pause
-    pub fn is_paused(&self) -> bool {
-        self.paused.load(Ordering::SeqCst)
-    }
-
-    /// Wait until not paused (returns immediately if not paused)
-    pub async fn wait_if_paused(&self) {
-        while self.is_paused() {
-            self.resume_notify.notified().await;
-        }
-    }
-
     /// Get a handle that workers can use to check pause state
     pub fn handle(&self) -> MemoryHandle {
         MemoryHandle {

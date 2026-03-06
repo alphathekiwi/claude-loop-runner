@@ -1,15 +1,9 @@
+use super::WorkerContext;
 use crate::claude::{build_prompt, run_claude};
-use crate::config::Config;
 use crate::git::check_git_changes_filtered;
-use crate::memory::MemoryHandle;
 use crate::process::{expand_pattern, parse_result};
-use crate::state::State;
 use crate::types::{FileStatus, FileTask};
-use crate::usage::UsageHandle;
 use async_channel::{Receiver, Sender};
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
@@ -18,37 +12,16 @@ pub fn spawn_prompt_pool(
     concurrency: usize,
     rx: Receiver<FileTask>,
     verify_tx: Sender<FileTask>,
-    state: Arc<Mutex<State>>,
-    state_path: PathBuf,
-    config: Arc<Config>,
-    working_dir: PathBuf,
-    memory: MemoryHandle,
-    usage: UsageHandle,
+    ctx: WorkerContext,
 ) -> Vec<JoinHandle<()>> {
     (0..concurrency)
         .map(|worker_id| {
             let rx = rx.clone();
             let verify_tx = verify_tx.clone();
-            let state = Arc::clone(&state);
-            let state_path = state_path.clone();
-            let config = Arc::clone(&config);
-            let working_dir = working_dir.clone();
-            let memory = memory.clone();
-            let usage = usage.clone();
+            let ctx = ctx.clone();
 
             tokio::spawn(async move {
-                prompt_worker(
-                    worker_id,
-                    rx,
-                    verify_tx,
-                    state,
-                    state_path,
-                    config,
-                    working_dir,
-                    memory,
-                    usage,
-                )
-                .await;
+                prompt_worker(worker_id, rx, verify_tx, ctx).await;
             })
         })
         .collect()
@@ -58,25 +31,20 @@ async fn prompt_worker(
     worker_id: usize,
     rx: Receiver<FileTask>,
     verify_tx: Sender<FileTask>,
-    state: Arc<Mutex<State>>,
-    state_path: PathBuf,
-    config: Arc<Config>,
-    working_dir: PathBuf,
-    memory: MemoryHandle,
-    usage: UsageHandle,
+    ctx: WorkerContext,
 ) {
     while let Ok(task) = rx.recv().await {
         // Wait if memory pressure is high
-        if memory.is_paused() {
+        if ctx.memory.is_paused() {
             info!(worker = worker_id, "Waiting for memory pressure to ease...");
-            memory.wait_if_paused().await;
+            ctx.memory.wait_if_paused().await;
             info!(worker = worker_id, "Resuming after memory recovery");
         }
 
         // Wait if API usage limit exceeded
-        if usage.is_paused() {
+        if ctx.usage.is_paused() {
             info!(worker = worker_id, "Waiting for API usage quota to reset...");
-            usage.wait_if_paused().await;
+            ctx.usage.wait_if_paused().await;
             info!(worker = worker_id, "Resuming after usage quota reset");
         }
 
@@ -85,34 +53,34 @@ async fn prompt_worker(
 
         // Update status to in progress
         {
-            let mut state = state.lock().await;
+            let mut state = ctx.state.lock().await;
             state.update_status(&task.path, FileStatus::PromptInProgress);
-            if let Err(e) = state.save(&state_path) {
+            if let Err(e) = state.save(&ctx.state_path) {
                 error!(error = %e, "Failed to save state");
             }
         }
 
         // Build prompt
         let prompt = build_prompt(
-            &config.prompt,
+            &ctx.config.prompt,
             &task.path,
             &task.original_data,
-            &config.allowlist_pattern,
+            &ctx.config.allowlist_pattern,
         );
-        let allowlist = expand_pattern(&config.allowlist_pattern, &task.path);
+        let allowlist = expand_pattern(&ctx.config.allowlist_pattern, &task.path);
 
         // Run Claude
-        match run_claude(&prompt, &working_dir).await {
+        match run_claude(&prompt, &ctx.working_dir).await {
             Ok(output) => {
                 // Check for unauthorized file changes (filtering out pre-existing dirty files)
                 let git_state = {
-                    let state = state.lock().await;
+                    let state = ctx.state.lock().await;
                     state.git_state.clone()
                 };
 
                 if git_state.enabled {
                     if let Ok((_, unauthorized)) =
-                        check_git_changes_filtered(&allowlist, &working_dir, &git_state).await
+                        check_git_changes_filtered(&allowlist, &ctx.working_dir, &git_state).await
                     {
                         if !unauthorized.is_empty() {
                             let unauthorized_list: Vec<_> = unauthorized
@@ -135,10 +103,10 @@ async fn prompt_worker(
 
                 // Update state with result
                 let (prompt_done, total_files) = {
-                    let mut state = state.lock().await;
+                    let mut state = ctx.state.lock().await;
                     state.set_result(&task.path, result);
 
-                    if config.verification_cmd.is_some() {
+                    if ctx.config.verification_cmd.is_some() {
                         // Queue for verification
                         state.update_status(&task.path, FileStatus::AwaitingVerification);
                     } else {
@@ -146,7 +114,7 @@ async fn prompt_worker(
                         state.update_status(&task.path, FileStatus::Completed);
                     }
 
-                    if let Err(e) = state.save(&state_path) {
+                    if let Err(e) = state.save(&ctx.state_path) {
                         error!(error = %e, "Failed to save state");
                     }
 
@@ -165,7 +133,7 @@ async fn prompt_worker(
                     (total - not_prompted, total)
                 };
 
-                if config.verification_cmd.is_some() {
+                if ctx.config.verification_cmd.is_some() {
                     // Send to verification queue
                     if let Err(e) = verify_tx.send(task.clone()).await {
                         error!(error = %e, file = %file_display, "Failed to queue for verification");
@@ -178,10 +146,10 @@ async fn prompt_worker(
                 error!(worker = worker_id, file = %file_display, error = %e, "Prompt task failed");
 
                 // Mark as failed
-                let mut state = state.lock().await;
+                let mut state = ctx.state.lock().await;
                 state.update_status(&task.path, FileStatus::Failed);
                 state.set_error(&task.path, e.to_string());
-                if let Err(e) = state.save(&state_path) {
+                if let Err(e) = state.save(&ctx.state_path) {
                     error!(error = %e, "Failed to save state");
                 }
             }

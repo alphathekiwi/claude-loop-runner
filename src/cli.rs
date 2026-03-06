@@ -85,6 +85,10 @@ pub struct Cli {
     #[arg(long)]
     pub no_git: bool,
 
+    /// Don't auto-launch into a tmux session
+    #[arg(long)]
+    pub no_tmux: bool,
+
     /// Usage limit percentage (0-100). Pauses workers when Claude API utilization
     /// exceeds this threshold on either the 5-hour or 7-day window, and sleeps
     /// until the quota resets. Set to 0 to disable.

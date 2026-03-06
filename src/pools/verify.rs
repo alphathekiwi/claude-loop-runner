@@ -1,18 +1,13 @@
+use super::WorkerContext;
 use crate::claude::{build_fixup_prompt, run_claude};
-use crate::config::Config;
 use crate::git::commit_file_changes;
-use crate::memory::MemoryHandle;
 use crate::process::{expand_pattern_with_allowlist, parse_result, run_command};
-use crate::state::State;
 use crate::types::{FileStatus, FileTask};
-use crate::usage::UsageHandle;
 use async_channel::Receiver;
 use chrono::Utc;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -20,38 +15,17 @@ use tracing::{debug, error, info, warn};
 pub fn spawn_verify_pool(
     concurrency: usize,
     rx: Receiver<FileTask>,
-    state: Arc<Mutex<State>>,
-    state_path: PathBuf,
-    config: Arc<Config>,
-    working_dir: PathBuf,
+    ctx: WorkerContext,
     tasks_dir: PathBuf,
-    memory: MemoryHandle,
-    usage: UsageHandle,
 ) -> Vec<JoinHandle<()>> {
     (0..concurrency)
         .map(|worker_id| {
             let rx = rx.clone();
-            let state = Arc::clone(&state);
-            let state_path = state_path.clone();
-            let config = Arc::clone(&config);
-            let working_dir = working_dir.clone();
+            let ctx = ctx.clone();
             let tasks_dir = tasks_dir.clone();
-            let memory = memory.clone();
-            let usage = usage.clone();
 
             tokio::spawn(async move {
-                verify_worker(
-                    worker_id,
-                    rx,
-                    state,
-                    state_path,
-                    config,
-                    working_dir,
-                    tasks_dir,
-                    memory,
-                    usage,
-                )
-                .await;
+                verify_worker(worker_id, rx, ctx, tasks_dir).await;
             })
         })
         .collect()
@@ -65,7 +39,6 @@ fn append_to_failure_log(tasks_dir: &Path, file_path: &Path, message: &str) {
         return;
     }
 
-    // Create log filename from the source file path
     let log_name = file_path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -90,39 +63,31 @@ fn append_to_failure_log(tasks_dir: &Path, file_path: &Path, message: &str) {
 async fn verify_worker(
     worker_id: usize,
     rx: Receiver<FileTask>,
-    state: Arc<Mutex<State>>,
-    state_path: PathBuf,
-    config: Arc<Config>,
-    working_dir: PathBuf,
+    ctx: WorkerContext,
     tasks_dir: PathBuf,
-    memory: MemoryHandle,
-    usage: UsageHandle,
 ) {
-    let verification_cmd = match &config.verification_cmd {
+    let verification_cmd = match &ctx.config.verification_cmd {
         Some(cmd) => cmd.clone(),
-        None => {
-            // No verification configured, worker exits immediately
-            return;
-        }
+        None => return,
     };
 
     while let Ok(task) = rx.recv().await {
         // Wait if memory pressure is high
-        if memory.is_paused() {
+        if ctx.memory.is_paused() {
             info!(worker = worker_id, "Waiting for memory pressure to ease...");
-            memory.wait_if_paused().await;
+            ctx.memory.wait_if_paused().await;
             info!(worker = worker_id, "Resuming after memory recovery");
         }
 
         // Wait if API usage limit exceeded
-        if usage.is_paused() {
+        if ctx.usage.is_paused() {
             info!(worker = worker_id, "Waiting for API usage quota to reset...");
-            usage.wait_if_paused().await;
+            ctx.usage.wait_if_paused().await;
             info!(worker = worker_id, "Resuming after usage quota reset");
         }
         let file_display = task.path.display().to_string();
         let mut attempts = {
-            let state = state.lock().await;
+            let state = ctx.state.lock().await;
             state.get_attempts(&task.path)
         };
 
@@ -136,9 +101,9 @@ async fn verify_worker(
 
             // Update status
             {
-                let mut state = state.lock().await;
+                let mut state = ctx.state.lock().await;
                 state.update_status(&task.path, FileStatus::VerifyInProgress);
-                if let Err(e) = state.save(&state_path) {
+                if let Err(e) = state.save(&ctx.state_path) {
                     error!(error = %e, "Failed to save state");
                 }
             }
@@ -147,7 +112,7 @@ async fn verify_worker(
             let cmd = expand_pattern_with_allowlist(
                 &verification_cmd,
                 &task.path,
-                &config.allowlist_pattern,
+                &ctx.config.allowlist_pattern,
             );
             let result = match run_command(&cmd).await {
                 Ok(r) => r,
@@ -158,11 +123,10 @@ async fn verify_worker(
                         error = %e,
                         "Verification command failed to execute"
                     );
-                    // Mark as failed
-                    let mut state = state.lock().await;
+                    let mut state = ctx.state.lock().await;
                     state.update_status(&task.path, FileStatus::Failed);
                     state.set_error(&task.path, e.to_string());
-                    if let Err(e) = state.save(&state_path) {
+                    if let Err(e) = state.save(&ctx.state_path) {
                         error!(error = %e, "Failed to save state");
                     }
                     break;
@@ -170,7 +134,6 @@ async fn verify_worker(
             };
 
             if result.exit_code == 0 {
-                // Verification passed!
                 info!(
                     worker = worker_id,
                     file = %file_display,
@@ -178,9 +141,9 @@ async fn verify_worker(
                 );
 
                 // Auto-commit if enabled
-                if config.git.auto_commit {
-                    let description = config.git.commit_message_template.as_deref();
-                    match commit_file_changes(&working_dir, &task.path, description).await {
+                if ctx.config.git.auto_commit {
+                    let description = ctx.config.git.commit_message_template.as_deref();
+                    match commit_file_changes(&ctx.working_dir, &task.path, description).await {
                         Ok(Some(hash)) => {
                             info!(
                                 worker = worker_id,
@@ -207,9 +170,9 @@ async fn verify_worker(
                     }
                 }
 
-                let mut state = state.lock().await;
+                let mut state = ctx.state.lock().await;
                 state.update_status(&task.path, FileStatus::Completed);
-                if let Err(e) = state.save(&state_path) {
+                if let Err(e) = state.save(&ctx.state_path) {
                     error!(error = %e, "Failed to save state");
                 }
                 break;
@@ -218,26 +181,23 @@ async fn verify_worker(
             // Verification failed
             attempts += 1;
             {
-                let mut state = state.lock().await;
+                let mut state = ctx.state.lock().await;
                 state.increment_attempts(&task.path);
             }
 
-            // Build error message for logging
             let error_output = if result.stderr.is_empty() {
                 &result.stdout
             } else {
                 &result.stderr
             };
 
-            // Log verification failure
             let failure_msg = format!(
                 "VERIFICATION FAILED (attempt {}/{})\nCommand: {}\nExit code: {}\n\nOutput:\n{}",
-                attempts, config.max_retries, cmd, result.exit_code, error_output
+                attempts, ctx.config.max_retries, cmd, result.exit_code, error_output
             );
             append_to_failure_log(&tasks_dir, &task.path, &failure_msg);
 
-            if attempts >= config.max_retries {
-                // Max retries reached
+            if attempts >= ctx.config.max_retries {
                 warn!(
                     worker = worker_id,
                     file = %file_display,
@@ -245,17 +205,16 @@ async fn verify_worker(
                     "Verification FAILED after max retries"
                 );
 
-                // Log final failure
                 append_to_failure_log(
                     &tasks_dir,
                     &task.path,
                     "FINAL STATUS: FAILED after max retries",
                 );
 
-                let mut state = state.lock().await;
+                let mut state = ctx.state.lock().await;
                 state.update_status(&task.path, FileStatus::Failed);
                 state.set_error(&task.path, error_output.clone());
-                if let Err(e) = state.save(&state_path) {
+                if let Err(e) = state.save(&ctx.state_path) {
                     error!(error = %e, "Failed to save state");
                 }
                 break;
@@ -266,19 +225,20 @@ async fn verify_worker(
                 worker = worker_id,
                 file = %file_display,
                 attempt = attempts,
-                max = config.max_retries,
+                max = ctx.config.max_retries,
                 "Verification failed, running fixup"
             );
 
             {
-                let mut state = state.lock().await;
+                let mut state = ctx.state.lock().await;
                 state.update_status(&task.path, FileStatus::FixupInProgress);
-                if let Err(e) = state.save(&state_path) {
+                if let Err(e) = state.save(&ctx.state_path) {
                     error!(error = %e, "Failed to save state");
                 }
             }
 
-            let fixup_prompt_base = config
+            let fixup_prompt_base = ctx
+                .config
                 .fixup_prompt
                 .as_deref()
                 .unwrap_or("Fix the issues with the file");
@@ -287,10 +247,9 @@ async fn verify_worker(
                 fixup_prompt_base,
                 &task.path,
                 error_output,
-                &config.allowlist_pattern,
+                &ctx.config.allowlist_pattern,
             );
 
-            // Log the fixup prompt being sent
             append_to_failure_log(
                 &tasks_dir,
                 &task.path,
@@ -298,28 +257,25 @@ async fn verify_worker(
             );
 
             // Wait if API usage limit exceeded before calling Claude for fixup
-            if usage.is_paused() {
+            if ctx.usage.is_paused() {
                 info!(worker = worker_id, "Waiting for API usage quota to reset before fixup...");
-                usage.wait_if_paused().await;
+                ctx.usage.wait_if_paused().await;
                 info!(worker = worker_id, "Resuming fixup after usage quota reset");
             }
 
-            // Run fixup
-            match run_claude(&fixup_prompt, &working_dir).await {
+            match run_claude(&fixup_prompt, &ctx.working_dir).await {
                 Ok(output) => {
-                    // Log Claude's response
                     let response_log = format!(
                         "CLAUDE FIXUP RESPONSE:\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
                         output.stdout, output.stderr
                     );
                     append_to_failure_log(&tasks_dir, &task.path, &response_log);
 
-                    // Parse and update result
                     let parsed = parse_result(&output.stdout);
                     {
-                        let mut state = state.lock().await;
+                        let mut state = ctx.state.lock().await;
                         state.set_result(&task.path, parsed);
-                        if let Err(e) = state.save(&state_path) {
+                        if let Err(e) = state.save(&ctx.state_path) {
                             error!(error = %e, "Failed to save state");
                         }
                     }
@@ -337,25 +293,21 @@ async fn verify_worker(
                         "Fixup failed"
                     );
 
-                    // Log fixup failure
                     append_to_failure_log(
                         &tasks_dir,
                         &task.path,
                         &format!("FIXUP COMMAND FAILED: {}", e),
                     );
 
-                    // Mark as failed
-                    let mut state = state.lock().await;
+                    let mut state = ctx.state.lock().await;
                     state.update_status(&task.path, FileStatus::Failed);
                     state.set_error(&task.path, e.to_string());
-                    if let Err(e) = state.save(&state_path) {
+                    if let Err(e) = state.save(&ctx.state_path) {
                         error!(error = %e, "Failed to save state");
                     }
                     break;
                 }
             }
-
-            // Loop continues to re-verify
         }
     }
 

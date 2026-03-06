@@ -159,12 +159,15 @@ fn collect_glob_matches(pattern: &str) -> Vec<String> {
 }
 
 /// Discover related files for a source file using multiple conventions.
+///
 /// Searches for test files and snapshots in:
+///
 /// 1. Colocated: src/components/Foo.test.tsx (same directory)
 /// 2. Sibling Tests/ dir: src/Tests/Foo.test.tsx
 /// 3. Sibling __tests__/ dir: src/__tests__/Foo.test.tsx
 /// 4. Mirrored __tests__: src/__tests__/components/Foo.test.tsx
-/// Then for each found test, looks for snapshots in __snapshots__/.
+///
+/// Then for each found test, looks for snapshots in `__snapshots__/`.
 pub fn find_related_files(source_path: &Path, working_dir: &Path) -> Vec<PathBuf> {
     let stem = match source_path.file_stem().and_then(|s| s.to_str()) {
         Some(s) => extract_file_stem(&PathBuf::from(s)),

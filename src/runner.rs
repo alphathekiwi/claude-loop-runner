@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::memory::MemoryMonitor;
-use crate::pools::{spawn_prompt_pool, spawn_verify_pool};
+use crate::pools::{spawn_prompt_pool, spawn_verify_pool, WorkerContext};
 use crate::process::expand_pattern;
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
@@ -38,7 +38,7 @@ pub async fn run(
         let usage_monitor = UsageMonitor::new();
         let handle = usage_monitor.handle();
         let _usage_monitor_handle =
-            usage_monitor.spawn_monitor(limit, Duration::from_secs(30));
+            usage_monitor.spawn_monitor(limit, Duration::from_secs(120));
         info!(limit = format!("{:.0}%", limit), "Usage limit monitoring enabled");
         handle
     } else {
@@ -73,28 +73,27 @@ pub async fn run(
     let (verify_tx, verify_rx) = bounded::<FileTask>(file_count);
 
     // Spawn worker pools BEFORE queuing so consumers are ready
+    let ctx = WorkerContext {
+        state: Arc::clone(&state),
+        state_path: state_path.clone(),
+        config: Arc::clone(&config),
+        working_dir: working_dir.clone(),
+        memory: memory_handle,
+        usage: usage_handle,
+    };
+
     let prompt_handles = spawn_prompt_pool(
         config.concurrency,
         prompt_rx.clone(),
         verify_tx.clone(),
-        Arc::clone(&state),
-        state_path.clone(),
-        Arc::clone(&config),
-        working_dir.clone(),
-        memory_handle.clone(),
-        usage_handle.clone(),
+        ctx.clone(),
     );
 
     let verify_handles = spawn_verify_pool(
         verify_concurrency,
         verify_rx.clone(),
-        Arc::clone(&state),
-        state_path.clone(),
-        Arc::clone(&config),
-        working_dir.clone(),
+        ctx,
         tasks_dir,
-        memory_handle,
-        usage_handle,
     );
 
     // Now queue files — workers are already consuming
