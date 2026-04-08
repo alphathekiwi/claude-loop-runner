@@ -43,7 +43,10 @@ async fn prompt_worker(
 
         // Wait if API usage limit exceeded
         if ctx.usage.is_paused() {
-            info!(worker = worker_id, "Waiting for API usage quota to reset...");
+            info!(
+                worker = worker_id,
+                "Waiting for API usage quota to reset..."
+            );
             ctx.usage.wait_if_paused().await;
             info!(worker = worker_id, "Resuming after usage quota reset");
         }
@@ -124,10 +127,7 @@ async fn prompt_worker(
                         .files
                         .values()
                         .filter(|f| {
-                            matches!(
-                                f.status,
-                                FileStatus::Pending | FileStatus::PromptInProgress
-                            )
+                            matches!(f.status, FileStatus::Pending | FileStatus::PromptInProgress)
                         })
                         .count();
                     (total - not_prompted, total)

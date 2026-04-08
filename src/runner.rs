@@ -37,9 +37,11 @@ pub async fn run(
     let usage_handle = if let Some(limit) = usage_limit {
         let usage_monitor = UsageMonitor::new();
         let handle = usage_monitor.handle();
-        let _usage_monitor_handle =
-            usage_monitor.spawn_monitor(limit, Duration::from_secs(120));
-        info!(limit = format!("{:.0}%", limit), "Usage limit monitoring enabled");
+        let _usage_monitor_handle = usage_monitor.spawn_monitor(limit, Duration::from_secs(120));
+        info!(
+            limit = format!("{:.0}%", limit),
+            "Usage limit monitoring enabled"
+        );
         handle
     } else {
         usage::noop_handle()
@@ -89,21 +91,10 @@ pub async fn run(
         ctx.clone(),
     );
 
-    let verify_handles = spawn_verify_pool(
-        verify_concurrency,
-        verify_rx.clone(),
-        ctx,
-        tasks_dir,
-    );
+    let verify_handles = spawn_verify_pool(verify_concurrency, verify_rx.clone(), ctx, tasks_dir);
 
     // Now queue files — workers are already consuming
-    queue_files(
-        &state,
-        &prompt_tx,
-        &verify_tx,
-        config.max_files,
-    )
-    .await?;
+    queue_files(&state, &prompt_tx, &verify_tx, config.max_files).await?;
 
     // Close senders so workers know when to stop
     drop(prompt_tx);

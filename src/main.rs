@@ -149,8 +149,7 @@ async fn main() -> Result<()> {
         if let Ok(output) = std::process::Command::new("tmux").arg("-V").output() {
             if output.status.success() {
                 let session_name = build_tmux_session_name(&working_dir, &task_id);
-                let exe = std::env::current_exe()
-                    .unwrap_or_else(|_| "claude-loop-runner".into());
+                let exe = std::env::current_exe().unwrap_or_else(|_| "claude-loop-runner".into());
                 let mut cmd = format!(
                     "{} --resume {} --no-tmux --tasks-dir {} -w {}",
                     exe.display(),
@@ -198,64 +197,63 @@ async fn main() -> Result<()> {
     if (config.git.enabled || config.git.auto_branch || config.git.auto_commit)
         && git::is_git_repo(&working_dir).await.unwrap_or(false)
     {
-            match git::check_git_identity(&working_dir).await {
-                Ok(git::GitIdentityStatus::Configured { name, email }) => {
-                    info!(name = %name, email = %email, "Git identity configured");
-                }
-                Ok(git::GitIdentityStatus::Missing { name, email }) => {
-                    let missing_name = name.is_none();
-                    let missing_email = email.is_none();
+        match git::check_git_identity(&working_dir).await {
+            Ok(git::GitIdentityStatus::Configured { name, email }) => {
+                info!(name = %name, email = %email, "Git identity configured");
+            }
+            Ok(git::GitIdentityStatus::Missing { name, email }) => {
+                let missing_name = name.is_none();
+                let missing_email = email.is_none();
 
-                    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
-                        warn!("Git identity not configured and stdin is not a terminal; disabling git features");
-                        config.git.enabled = false;
-                        config.git.auto_branch = false;
-                        config.git.auto_commit = false;
-                    } else {
-                        match git::prompt_git_identity(missing_name, missing_email) {
-                            Ok(git::GitIdentityAction::Configure {
-                                name: new_name,
-                                email: new_email,
-                            }) => {
-                                let final_name = if missing_name {
-                                    &new_name
-                                } else {
-                                    name.as_ref().unwrap()
-                                };
-                                let final_email = if missing_email {
-                                    &new_email
-                                } else {
-                                    email.as_ref().unwrap()
-                                };
-                                if let Err(e) =
-                                    git::set_git_identity(&working_dir, final_name, final_email)
-                                        .await
-                                {
-                                    warn!(error = %e, "Failed to set git identity, disabling git features");
-                                    config.git.enabled = false;
-                                    config.git.auto_branch = false;
-                                    config.git.auto_commit = false;
-                                }
-                            }
-                            Ok(git::GitIdentityAction::DisableGit) => {
-                                warn!("Git features disabled by user choice (missing identity)");
-                                config.git.enabled = false;
-                                config.git.auto_branch = false;
-                                config.git.auto_commit = false;
-                            }
-                            Err(e) => {
-                                warn!(error = %e, "Failed to prompt for git identity, disabling git features");
+                if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                    warn!("Git identity not configured and stdin is not a terminal; disabling git features");
+                    config.git.enabled = false;
+                    config.git.auto_branch = false;
+                    config.git.auto_commit = false;
+                } else {
+                    match git::prompt_git_identity(missing_name, missing_email) {
+                        Ok(git::GitIdentityAction::Configure {
+                            name: new_name,
+                            email: new_email,
+                        }) => {
+                            let final_name = if missing_name {
+                                &new_name
+                            } else {
+                                name.as_ref().unwrap()
+                            };
+                            let final_email = if missing_email {
+                                &new_email
+                            } else {
+                                email.as_ref().unwrap()
+                            };
+                            if let Err(e) =
+                                git::set_git_identity(&working_dir, final_name, final_email).await
+                            {
+                                warn!(error = %e, "Failed to set git identity, disabling git features");
                                 config.git.enabled = false;
                                 config.git.auto_branch = false;
                                 config.git.auto_commit = false;
                             }
                         }
+                        Ok(git::GitIdentityAction::DisableGit) => {
+                            warn!("Git features disabled by user choice (missing identity)");
+                            config.git.enabled = false;
+                            config.git.auto_branch = false;
+                            config.git.auto_commit = false;
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Failed to prompt for git identity, disabling git features");
+                            config.git.enabled = false;
+                            config.git.auto_branch = false;
+                            config.git.auto_commit = false;
+                        }
                     }
                 }
-                Err(e) => {
-                    warn!(error = %e, "Failed to check git identity, continuing (commits may fail)");
-                }
             }
+            Err(e) => {
+                warn!(error = %e, "Failed to check git identity, continuing (commits may fail)");
+            }
+        }
     }
 
     // Capture git state and set up branch if git features are enabled
@@ -338,7 +336,11 @@ async fn main() -> Result<()> {
         state_path.clone(),
         cli.tasks_dir.clone(),
         shutdown_rx,
-        if cli.limit > 0.0 { Some(cli.limit) } else { None },
+        if cli.limit > 0.0 {
+            Some(cli.limit)
+        } else {
+            None
+        },
     )
     .await;
 
@@ -390,9 +392,7 @@ fn build_tmux_session_name(working_dir: &std::path::Path, task_id: &str) -> Stri
         &components[..]
     };
 
-    let task_num = task_id
-        .strip_prefix("task_")
-        .unwrap_or(task_id);
+    let task_num = task_id.strip_prefix("task_").unwrap_or(task_id);
 
     if parts.is_empty() {
         return format!("clr_{}", task_num);

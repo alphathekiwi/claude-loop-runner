@@ -81,7 +81,10 @@ async fn verify_worker(
 
         // Wait if API usage limit exceeded
         if ctx.usage.is_paused() {
-            info!(worker = worker_id, "Waiting for API usage quota to reset...");
+            info!(
+                worker = worker_id,
+                "Waiting for API usage quota to reset..."
+            );
             ctx.usage.wait_if_paused().await;
             info!(worker = worker_id, "Resuming after usage quota reset");
         }
@@ -258,7 +261,10 @@ async fn verify_worker(
 
             // Wait if API usage limit exceeded before calling Claude for fixup
             if ctx.usage.is_paused() {
-                info!(worker = worker_id, "Waiting for API usage quota to reset before fixup...");
+                info!(
+                    worker = worker_id,
+                    "Waiting for API usage quota to reset before fixup..."
+                );
                 ctx.usage.wait_if_paused().await;
                 info!(worker = worker_id, "Resuming fixup after usage quota reset");
             }

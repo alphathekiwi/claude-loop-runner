@@ -185,17 +185,11 @@ pub async fn set_git_identity(working_dir: &Path, name: &str, email: &str) -> Re
 
 /// Interactively prompt the user to configure git identity or disable git features.
 /// Output goes to stderr to avoid polluting piped stdout.
-pub fn prompt_git_identity(
-    missing_name: bool,
-    missing_email: bool,
-) -> Result<GitIdentityAction> {
+pub fn prompt_git_identity(missing_name: bool, missing_email: bool) -> Result<GitIdentityAction> {
     let mut stderr = io::stderr();
 
     writeln!(stderr)?;
-    writeln!(
-        stderr,
-        "Git identity is not fully configured."
-    )?;
+    writeln!(stderr, "Git identity is not fully configured.")?;
     if missing_name {
         writeln!(stderr, "  - user.name is not set")?;
     }
@@ -203,10 +197,7 @@ pub fn prompt_git_identity(
         writeln!(stderr, "  - user.email is not set")?;
     }
     writeln!(stderr)?;
-    writeln!(
-        stderr,
-        "Git commits require both user.name and user.email."
-    )?;
+    writeln!(stderr, "Git commits require both user.name and user.email.")?;
     writeln!(stderr, "You can:")?;
     writeln!(
         stderr,

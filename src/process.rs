@@ -550,10 +550,7 @@ RESULT: {"second": 2}
         std::fs::write(src_dir.join("Foo.tsx"), "").unwrap();
         std::fs::write(src_dir.join("Foo.test.tsx"), "").unwrap();
 
-        let related = find_related_files(
-            &PathBuf::from("src/components/Foo.tsx"),
-            dir.path(),
-        );
+        let related = find_related_files(&PathBuf::from("src/components/Foo.tsx"), dir.path());
         assert_eq!(related.len(), 1);
         assert_eq!(related[0], PathBuf::from("src/components/Foo.test.tsx"));
     }
@@ -568,10 +565,7 @@ RESULT: {"second": 2}
         std::fs::write(src_dir.join("Bar.tsx"), "").unwrap();
         std::fs::write(tests_dir.join("Bar.test.tsx"), "").unwrap();
 
-        let related = find_related_files(
-            &PathBuf::from("src/Components/Bar.tsx"),
-            dir.path(),
-        );
+        let related = find_related_files(&PathBuf::from("src/Components/Bar.tsx"), dir.path());
         assert_eq!(related.len(), 1);
         assert_eq!(related[0], PathBuf::from("src/__tests__/Bar.test.tsx"));
     }
@@ -586,10 +580,8 @@ RESULT: {"second": 2}
         std::fs::write(src_dir.join("Editor.tsx"), "").unwrap();
         std::fs::write(test_dir.join("Editor.test.tsx"), "").unwrap();
 
-        let related = find_related_files(
-            &PathBuf::from("src/containers/Cms/Editor.tsx"),
-            dir.path(),
-        );
+        let related =
+            find_related_files(&PathBuf::from("src/containers/Cms/Editor.tsx"), dir.path());
         assert_eq!(related.len(), 1);
         assert_eq!(
             related[0],
@@ -608,10 +600,7 @@ RESULT: {"second": 2}
         std::fs::write(src_dir.join("Widget.test.tsx"), "").unwrap();
         std::fs::write(snap_dir.join("Widget.test.tsx.snap"), "").unwrap();
 
-        let related = find_related_files(
-            &PathBuf::from("src/components/Widget.tsx"),
-            dir.path(),
-        );
+        let related = find_related_files(&PathBuf::from("src/components/Widget.tsx"), dir.path());
         assert_eq!(related.len(), 2);
         assert!(related.contains(&PathBuf::from("src/components/Widget.test.tsx")));
         assert!(related.contains(&PathBuf::from(
@@ -627,10 +616,7 @@ RESULT: {"second": 2}
         std::fs::write(src_dir.join("Foo.test.tsx"), "").unwrap();
 
         // Should return empty - test files don't need related file discovery
-        let related = find_related_files(
-            &PathBuf::from("src/Foo.test.tsx"),
-            dir.path(),
-        );
+        let related = find_related_files(&PathBuf::from("src/Foo.test.tsx"), dir.path());
         assert!(related.is_empty());
     }
 
@@ -642,10 +628,7 @@ RESULT: {"second": 2}
         std::fs::write(src_dir.join("Foo.tsx"), "").unwrap();
 
         // No test files exist
-        let related = find_related_files(
-            &PathBuf::from("src/Foo.tsx"),
-            dir.path(),
-        );
+        let related = find_related_files(&PathBuf::from("src/Foo.tsx"), dir.path());
         assert!(related.is_empty());
     }
 

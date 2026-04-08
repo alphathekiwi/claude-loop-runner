@@ -25,7 +25,12 @@ struct UsageWindow {
 /// Fetches the OAuth access token from the macOS Keychain.
 fn get_oauth_token() -> anyhow::Result<String> {
     let output = Command::new("security")
-        .args(["find-generic-password", "-s", "Claude Code-credentials", "-w"])
+        .args([
+            "find-generic-password",
+            "-s",
+            "Claude Code-credentials",
+            "-w",
+        ])
         .output()?;
 
     if !output.status.success() {
@@ -68,8 +73,16 @@ async fn fetch_usage() -> anyhow::Result<(f64, f64, Option<DateTime<Utc>>)> {
 
     let usage: UsageResponse = resp.json().await?;
 
-    let five_hr = usage.five_hour.as_ref().map(|w| w.utilization).unwrap_or(0.0);
-    let seven_day = usage.seven_day.as_ref().map(|w| w.utilization).unwrap_or(0.0);
+    let five_hr = usage
+        .five_hour
+        .as_ref()
+        .map(|w| w.utilization)
+        .unwrap_or(0.0);
+    let seven_day = usage
+        .seven_day
+        .as_ref()
+        .map(|w| w.utilization)
+        .unwrap_or(0.0);
 
     // Find the soonest reset time from whichever window is over limit
     let mut soonest_reset: Option<DateTime<Utc>> = None;
@@ -155,10 +168,8 @@ impl UsageMonitor {
                             if let Some(reset_at) = soonest_reset {
                                 let now = Utc::now();
                                 if reset_at > now {
-                                    let sleep_secs = (reset_at - now)
-                                        .num_seconds()
-                                        .max(0) as u64
-                                        + 60; // 60s buffer past reset
+                                    let sleep_secs =
+                                        (reset_at - now).num_seconds().max(0) as u64 + 60; // 60s buffer past reset
                                     info!(
                                         reset_at = %reset_at.format("%Y-%m-%d %H:%M:%S UTC"),
                                         sleep_secs = sleep_secs,
@@ -183,12 +194,11 @@ impl UsageMonitor {
 
                             if let Some(reset_at) = soonest_reset {
                                 let now = Utc::now();
-                                let wake_at = reset_at
-                                    - chrono::TimeDelta::seconds(early_wake_secs);
+                                let wake_at =
+                                    reset_at - chrono::TimeDelta::seconds(early_wake_secs);
 
                                 if wake_at > now {
-                                    let sleep_secs =
-                                        (wake_at - now).num_seconds().max(0) as u64;
+                                    let sleep_secs = (wake_at - now).num_seconds().max(0) as u64;
                                     info!(
                                         reset_at = %reset_at.format("%H:%M:%S UTC"),
                                         wake_at = %(wake_at).format("%H:%M:%S UTC"),
@@ -208,7 +218,9 @@ impl UsageMonitor {
                                     burning_remaining = true;
                                     paused.store(false, Ordering::SeqCst);
                                     resume_notify.notify_waiters();
-                                    info!("Within 30min of reset, resuming to burn remaining tokens");
+                                    info!(
+                                        "Within 30min of reset, resuming to burn remaining tokens"
+                                    );
                                 }
                             }
                         } else if !over_limit && currently_paused {
