@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+
+echo "=== pre-push: cargo test ==="
+cargo test --workspace
+
+echo "=== pre-push: all checks passed ==="
