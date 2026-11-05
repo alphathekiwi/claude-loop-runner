@@ -1,6 +1,7 @@
 # Claude Loop Runner
 
 [![CI](https://github.com/alphathekiwi/claude-loop-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/alphathekiwi/claude-loop-runner/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/alphathekiwi/claude-loop-runner/graph/badge.svg)](https://codecov.io/gh/alphathekiwi/claude-loop-runner)
 
 A parallel task runner that orchestrates multiple Claude CLI instances to process files concurrently. Designed for batch operations like adding tests, refactoring code, or applying consistent changes across many files.
 
