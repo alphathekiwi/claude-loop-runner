@@ -343,9 +343,7 @@ impl UsageHandle {
     }
 
     pub async fn wait_if_paused(&self) {
-        while self.is_paused() {
-            self.resume_notify.notified().await;
-        }
+        crate::pause::wait_while_paused(&self.resume_notify, || self.is_paused()).await;
     }
 }
 

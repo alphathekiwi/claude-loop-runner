@@ -173,8 +173,8 @@ fn max_files_limits_each_run_and_resume_finishes_the_rest() {
     );
     let state = task_state(repo.path(), TASKS, "task_0");
     assert_eq!(statuses(&state), ["completed", "completed", "completed"]);
-    // CLI overrides apply to the resumed run only; the saved config is not rewritten.
-    assert_eq!(state["config"]["max_files"], 1);
+    // The resume override is saved back to the task's config.
+    assert_eq!(state["config"]["max_files"], 5);
 
     // Every file was prompted exactly once across the three runs.
     let calls = std::fs::read_to_string(repo.path().join("calls.log")).unwrap();
@@ -279,4 +279,66 @@ fn fixup_that_cannot_launch_claude_marks_file_failed() {
     assert_eq!(fs["last_error"], "Failed to execute claude CLI");
     let log = std::fs::read_to_string(repo.path().join(TASKS).join("failures/Foo.ts.log")).unwrap();
     assert!(log.contains("FIXUP COMMAND FAILED"), "{log}");
+}
+
+#[test]
+fn resume_flags_are_saved_including_explicit_defaults() {
+    let repo = repo_with_files(&["src/Foo.ts"]);
+    let input = write_input(repo.path(), &["src/Foo.ts"]);
+    let saved = |key: &str| task_state(repo.path(), TASKS, "task_0")["config"][key].clone();
+
+    run_ok(
+        repo.path(),
+        &[
+            "--input",
+            input,
+            "--prompt",
+            "noop",
+            "-c",
+            "9",
+            "--max-retries",
+            "6",
+            "--dry-run",
+            "--no-git",
+            "--tasks-dir",
+            TASKS,
+        ],
+    );
+    assert_eq!(
+        (saved("concurrency"), saved("max_retries")),
+        (9.into(), 6.into())
+    );
+
+    // A non-default override on resume is written back to the task's state.
+    let resume = |extra: &[&str]| {
+        let mut args = vec![
+            "--resume",
+            "task_0",
+            "--dry-run",
+            "--no-git",
+            "--tasks-dir",
+            TASKS,
+        ];
+        args.extend_from_slice(extra);
+        run_ok(repo.path(), &args);
+    };
+    resume(&["-c", "7"]);
+    assert_eq!(
+        (saved("concurrency"), saved("max_retries")),
+        (7.into(), 6.into())
+    );
+
+    // Passing the default value explicitly still overrides the saved one.
+    resume(&["-c", "5", "--max-retries", "3"]);
+    assert_eq!(
+        (saved("concurrency"), saved("max_retries")),
+        (5.into(), 3.into())
+    );
+
+    // A bare resume keeps what was saved.
+    resume(&[]);
+    assert_eq!(
+        (saved("concurrency"), saved("max_retries")),
+        (5.into(), 3.into())
+    );
 }
