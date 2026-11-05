@@ -102,22 +102,31 @@ pub async fn run(
     drop(verify_tx);
 
     // Wait for shutdown signal or completion
+    let mut handles: Vec<_> = prompt_handles.into_iter().chain(verify_handles).collect();
+    // Handles before this index have already been awaited to completion
+    let mut joined = 0;
     let mut shutdown_rx = shutdown_rx;
     tokio::select! {
         _ = async {
-            for handle in prompt_handles {
-                let _ = handle.await;
-            }
-            for handle in verify_handles {
-                let _ = handle.await;
+            while joined < handles.len() {
+                let _ = (&mut handles[joined]).await;
+                joined += 1;
             }
         } => {
             info!("All workers completed");
         }
         _ = shutdown_rx.recv() => {
-            info!("Shutdown signal received, saving state...");
-            // State is automatically saved by workers, just need to wait a moment
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            info!("Shutdown signal received, stopping workers...");
+            // Workers save state after every transition, so in-flight files stay in an
+            // in-progress status and are re-queued on resume. Aborting drops each
+            // worker's claude/verify child, which kills it (kill_on_drop).
+            let remaining = handles.split_off(joined);
+            for handle in &remaining {
+                handle.abort();
+            }
+            for handle in remaining {
+                let _ = handle.await;
+            }
         }
     }
 

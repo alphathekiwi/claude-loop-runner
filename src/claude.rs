@@ -84,6 +84,8 @@ pub async fn run_claude(
         .arg(prompt)
         .arg("--dangerously-skip-permissions") // Non-interactive mode
         .current_dir(working_dir)
+        // If the worker is cancelled (Ctrl-C), don't leave claude editing files unsupervised
+        .kill_on_drop(true)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

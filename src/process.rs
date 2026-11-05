@@ -302,6 +302,7 @@ pub async fn run_command(command: &str, working_dir: &Path) -> Result<ProcessOut
         .arg("-c")
         .arg(command)
         .current_dir(working_dir)
+        .kill_on_drop(true)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
