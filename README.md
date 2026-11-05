@@ -1,6 +1,18 @@
 # Claude Loop Runner
 
+[![CI](https://github.com/alphathekiwi/claude-loop-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/alphathekiwi/claude-loop-runner/actions/workflows/ci.yml)
+
 A parallel task runner that orchestrates multiple Claude CLI instances to process files concurrently. Designed for batch operations like adding tests, refactoring code, or applying consistent changes across many files.
+
+## Design
+
+Two worker pools connected by channels, with all progress saved to disk so a run can stop and resume.
+
+- **Prompt pool**: each worker runs one Claude CLI instance on one file. Edits outside the file's allowlist are flagged, and auto-commit stages only files related to the target, so out-of-scope edits never land in history.
+- **Verify pool**: runs `--verify` against the result. On failure it sends the error output back to Claude with the `--fixup` prompt, up to `--max-retries` times, before marking the file failed.
+- **Resumable state**: every file moves through an explicit state machine (see [Task States](#task-states)) persisted to a JSON state file. `Ctrl-C` saves and exits; `--resume` picks up mid-run, re-queuing in-flight files to the right pool. `--dry-run` writes the task without running it so it can be reviewed and edited first.
+- **Backpressure**: a memory monitor pauses workers above 85% system memory and resumes below 70%; a usage monitor pauses when Claude usage passes `--limit` on the 5-hour or 7-day window and sleeps until the quota resets.
+- **Git safety**: optional per-task branch, pre-existing dirty files recorded and excluded from the scope check, one commit per processed file, and a startup check for git identity.
 
 ## Installation
 
