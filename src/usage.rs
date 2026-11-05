@@ -56,7 +56,7 @@ fn get_oauth_token() -> anyhow::Result<String> {
 }
 
 /// Query the Anthropic usage API and return (five_hour_utilization, seven_day_utilization, soonest_reset).
-async fn fetch_usage() -> anyhow::Result<(f64, f64, Option<DateTime<Utc>>)> {
+async fn fetch_usage(limit_percent: f64) -> anyhow::Result<(f64, f64, Option<DateTime<Utc>>)> {
     let token = get_oauth_token()?;
 
     let client = reqwest::Client::new();
@@ -76,12 +76,14 @@ async fn fetch_usage() -> anyhow::Result<(f64, f64, Option<DateTime<Utc>>)> {
 
     let usage: UsageResponse = resp.json().await?;
 
-    Ok(summarize_usage(&usage))
+    Ok(summarize_usage(&usage, limit_percent))
 }
 
 /// Reduce a usage response to (five_hour_utilization, seven_day_utilization, soonest_reset).
+/// Only windows at or over `limit_percent` contribute a reset time, since waking at the
+/// reset of a window that isn't limiting us changes nothing.
 /// Missing windows count as 0% utilization; unparseable reset times are ignored.
-fn summarize_usage(usage: &UsageResponse) -> (f64, f64, Option<DateTime<Utc>>) {
+fn summarize_usage(usage: &UsageResponse, limit_percent: f64) -> (f64, f64, Option<DateTime<Utc>>) {
     let five_hr = usage
         .five_hour
         .as_ref()
@@ -95,7 +97,11 @@ fn summarize_usage(usage: &UsageResponse) -> (f64, f64, Option<DateTime<Utc>>) {
 
     // Find the soonest reset time from whichever window is over limit
     let mut soonest_reset: Option<DateTime<Utc>> = None;
-    for window in [&usage.five_hour, &usage.seven_day].into_iter().flatten() {
+    for window in [&usage.five_hour, &usage.seven_day]
+        .into_iter()
+        .flatten()
+        .filter(|w| w.utilization >= limit_percent)
+    {
         if let Some(ref reset_str) = window.resets_at {
             if let Ok(dt) = DateTime::parse_from_rfc3339(reset_str) {
                 let dt_utc = dt.with_timezone(&Utc);
@@ -124,7 +130,7 @@ enum UsageAction {
     BurnNow,
     /// Over the soft limit with no known reset time: pause and keep checking.
     Pause,
-    /// Back under the limit while paused: clear burn mode and resume.
+    /// Back under the limit while paused or burning (the window reset): clear burn mode and resume.
     Resume,
     /// Nothing to change.
     NoChange,
@@ -160,7 +166,7 @@ fn decide_usage_action(
             }
             None => UsageAction::Pause,
         }
-    } else if !over_limit && currently_paused {
+    } else if !over_limit && (currently_paused || burning_remaining) {
         UsageAction::Resume
     } else {
         UsageAction::NoChange
@@ -208,7 +214,7 @@ impl UsageMonitor {
             let mut burning_remaining = false;
 
             loop {
-                match fetch_usage().await {
+                match fetch_usage(limit_percent).await {
                     Ok((five_hr, seven_day, soonest_reset)) => {
                         let currently_paused = paused.load(Ordering::SeqCst);
                         let action = decide_usage_action(
@@ -384,7 +390,7 @@ mod tests {
                 "seven_day": {"utilization": 88.0, "resets_at": "2025-01-01T03:00:00+00:00"}
             }"#,
         );
-        let (five, seven, reset) = summarize_usage(&usage);
+        let (five, seven, reset) = summarize_usage(&usage, 0.0);
         assert_eq!(five, 42.5);
         assert_eq!(seven, 88.0);
         assert_eq!(
@@ -402,7 +408,7 @@ mod tests {
             }"#,
         );
         assert_eq!(
-            summarize_usage(&usage).2,
+            summarize_usage(&usage, 0.0).2,
             Some(Utc.with_ymd_and_hms(2025, 1, 1, 1, 0, 0).unwrap())
         );
     }
@@ -412,19 +418,20 @@ mod tests {
         let usage =
             parse(r#"{"five_hour": {"utilization": 0, "resets_at": "2025-01-01T12:00:00+10:00"}}"#);
         assert_eq!(
-            summarize_usage(&usage).2,
+            summarize_usage(&usage, 0.0).2,
             Some(Utc.with_ymd_and_hms(2025, 1, 1, 2, 0, 0).unwrap())
         );
     }
 
     #[test]
     fn summarize_treats_missing_windows_as_zero_and_no_reset() {
-        let (five, seven, reset) = summarize_usage(&parse("{}"));
+        let (five, seven, reset) = summarize_usage(&parse("{}"), 0.0);
         assert_eq!((five, seven, reset), (0.0, 0.0, None));
 
-        let (five, seven, reset) = summarize_usage(&parse(
-            r#"{"five_hour": null, "seven_day": {"utilization": 7}}"#,
-        ));
+        let (five, seven, reset) = summarize_usage(
+            &parse(r#"{"five_hour": null, "seven_day": {"utilization": 7}}"#),
+            0.0,
+        );
         assert_eq!((five, seven, reset), (0.0, 7.0, None));
     }
 
@@ -437,9 +444,28 @@ mod tests {
             }"#,
         );
         assert_eq!(
-            summarize_usage(&usage).2,
+            summarize_usage(&usage, 0.0).2,
             Some(Utc.with_ymd_and_hms(2025, 1, 7, 0, 0, 0).unwrap())
         );
+    }
+
+    #[test]
+    fn summarize_only_uses_resets_of_windows_over_the_limit() {
+        // Over the limit on the 7-day window only: the 5-hour reset must not wake workers.
+        let usage = parse(
+            r#"{
+                "five_hour": {"utilization": 20, "resets_at": "2025-01-01T01:00:00Z"},
+                "seven_day": {"utilization": 97, "resets_at": "2025-01-07T00:00:00Z"}
+            }"#,
+        );
+        assert_eq!(
+            summarize_usage(&usage, 95.0).2,
+            Some(Utc.with_ymd_and_hms(2025, 1, 7, 0, 0, 0).unwrap())
+        );
+        // Under the limit everywhere: no reset to wait for.
+        let usage =
+            parse(r#"{"five_hour": {"utilization": 20, "resets_at": "2025-01-01T01:00:00Z"}}"#);
+        assert_eq!(summarize_usage(&usage, 95.0).2, None);
     }
 
     #[test]
@@ -514,9 +540,10 @@ mod tests {
     }
 
     #[test]
-    fn under_limit_resumes_only_when_paused() {
+    fn under_limit_resumes_only_when_paused_or_burning() {
         assert_eq!(decide(94.9, 94.9, None, true, false), UsageAction::Resume);
         assert_eq!(decide(94.9, 94.9, None, true, true), UsageAction::Resume);
+        assert_eq!(decide(94.9, 94.9, None, false, true), UsageAction::Resume);
         assert_eq!(
             decide(10.0, 10.0, None, false, false),
             UsageAction::NoChange
@@ -533,7 +560,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "bug: burning_remaining is never cleared when a window resets without the loop being paused, so the next soft-limit breach is ignored"]
     fn burn_mode_is_cleared_after_reset() {
         // Mirrors the spawn_monitor loop's state updates.
         let mut paused = false;

@@ -159,13 +159,17 @@ async fn verify_worker(worker_id: usize, rx: Receiver<FileTask>, ctx: WorkerCont
                 &result.stderr
             };
 
-            let failure_msg = format!(
+            let failure_msg =
+                format!(
                 "VERIFICATION FAILED (attempt {}/{})\nCommand: {}\nExit code: {}\n\nOutput:\n{}",
-                attempts, ctx.config.max_retries, cmd, result.exit_code, error_output
+                attempts,
+                ctx.config.max_retries + 1,
+                cmd, result.exit_code, error_output
             );
             append_to_failure_log(&tasks_dir, &task.path, &failure_msg);
 
-            if attempts >= ctx.config.max_retries {
+            // The first verification is not a retry: allow max_retries fixups after it
+            if attempts > ctx.config.max_retries {
                 warn!(
                     worker = worker_id,
                     file = %file_display,

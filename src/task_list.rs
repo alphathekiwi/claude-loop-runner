@@ -38,9 +38,18 @@ impl TaskList {
             let content = fs::read_to_string(&task_list_path).with_context(|| {
                 format!("Failed to read task list: {}", task_list_path.display())
             })?;
-            let list: TaskList = serde_json::from_str(&content).with_context(|| {
+            let mut list: TaskList = serde_json::from_str(&content).with_context(|| {
                 format!("Failed to parse task list: {}", task_list_path.display())
             })?;
+            // Older or hand-edited lists may lack next_id; never hand out an ID already in use
+            let next_free = list
+                .tasks
+                .keys()
+                .filter_map(|id| id.strip_prefix("task_")?.parse::<u32>().ok())
+                .map(|n| n + 1)
+                .max()
+                .unwrap_or(0);
+            list.next_id = list.next_id.max(next_free);
             Ok(list)
         } else {
             // Create tasks directory if it doesn't exist
@@ -237,7 +246,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "bug: task list without next_id reuses task_0 and overwrites the existing entry"]
     fn create_task_after_loading_list_without_next_id_does_not_overwrite() {
         let tmp = tempdir().unwrap();
         fs::write(
