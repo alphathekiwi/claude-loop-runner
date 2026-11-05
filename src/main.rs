@@ -149,19 +149,7 @@ async fn main() -> Result<()> {
             if output.status.success() {
                 let session_name = build_tmux_session_name(&working_dir, &task_id);
                 let exe = std::env::current_exe().unwrap_or_else(|_| "claude-loop-runner".into());
-                let mut cmd = format!(
-                    "{} --resume {} --no-tmux --tasks-dir {} -w {}",
-                    exe.display(),
-                    task_id,
-                    cli.tasks_dir.display(),
-                    working_dir.display(),
-                );
-                if cli.no_git {
-                    cmd.push_str(" --no-git");
-                }
-                if cli.limit > 0.0 {
-                    cmd.push_str(&format!(" --limit {}", cli.limit));
-                }
+                let cmd = build_tmux_command(&exe, &task_id, &cli, &working_dir);
                 let result = std::process::Command::new("tmux")
                     .args(["new-session", "-d", "-s", &session_name, &cmd])
                     .status();
@@ -359,6 +347,32 @@ async fn main() -> Result<()> {
 
 /// Shorten a prompt for the task list, cutting on a char boundary so
 /// multi-byte characters can't panic the slice.
+/// Build the shell command tmux runs to resume this task in a new session.
+///
+/// Saved config travels in the task's state file; only per-run flags that are not
+/// saved (--no-git, --limit) are passed on. tmux runs the string with `sh -c`, so
+/// every path is shell-quoted.
+fn build_tmux_command(
+    exe: &std::path::Path,
+    task_id: &str,
+    cli: &Cli,
+    working_dir: &std::path::Path,
+) -> String {
+    use process::shell_quote;
+    let mut cmd = format!(
+        "{} --resume {} --no-tmux --tasks-dir {} -w {} --limit {}",
+        shell_quote(&exe.to_string_lossy()),
+        shell_quote(task_id),
+        shell_quote(&cli.tasks_dir.to_string_lossy()),
+        shell_quote(&working_dir.to_string_lossy()),
+        cli.limit,
+    );
+    if cli.no_git {
+        cmd.push_str(" --no-git");
+    }
+    cmd
+}
+
 /// Merge CLI flags over a resumed task's saved config and persist the result, so the
 /// overrides survive the next resume rather than applying to this run only.
 fn apply_resume_overrides(
@@ -427,6 +441,50 @@ fn build_tmux_session_name(working_dir: &std::path::Path, task_id: &str) -> Stri
 mod tests {
     use super::*;
     use std::path::Path;
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(std::iter::once("claude-loop-runner").chain(args.iter().copied()))
+            .expect("args should parse")
+    }
+
+    #[test]
+    fn tmux_command_resumes_the_task_with_per_run_flags() {
+        let cli = parse(&[
+            "-i", "in.json", "-p", "go", "-d", "tasks", "--no-git", "--limit", "80",
+        ]);
+        let cmd = build_tmux_command(Path::new("/bin/clr"), "task_3", &cli, Path::new("/work"));
+        assert_eq!(
+            cmd,
+            "/bin/clr --resume task_3 --no-tmux --tasks-dir tasks -w /work --limit 80 --no-git"
+        );
+    }
+
+    #[test]
+    fn tmux_command_keeps_a_disabled_usage_limit() {
+        // --limit 0 disables the usage monitor; dropping it would bring back the default 95.
+        let cli = parse(&["-i", "in.json", "-p", "go", "--limit", "0"]);
+        let cmd = build_tmux_command(Path::new("/bin/clr"), "task_0", &cli, Path::new("/w"));
+        let resumed = parse(&cmd.split(' ').skip(1).collect::<Vec<_>>());
+        assert_eq!(resumed.limit, 0.0);
+        assert_eq!(resumed.resume_task_id(), Some("task_0"));
+        assert!(resumed.no_tmux && !resumed.no_git);
+    }
+
+    #[test]
+    fn tmux_command_quotes_paths_with_spaces() {
+        let cli = parse(&["-i", "in.json", "-p", "go", "-d", "my tasks"]);
+        let cmd = build_tmux_command(
+            Path::new("/Applications/My Tools/clr"),
+            "task_0",
+            &cli,
+            Path::new("/Users/me/My Project"),
+        );
+        assert_eq!(
+            cmd,
+            "'/Applications/My Tools/clr' --resume task_0 --no-tmux --tasks-dir 'my tasks' \
+             -w '/Users/me/My Project' --limit 95"
+        );
+    }
 
     #[test]
     fn truncate_description_keeps_short_prompts() {
