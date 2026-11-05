@@ -91,6 +91,7 @@ pub enum GitIdentityStatus {
 }
 
 /// User's choice when git identity is missing
+#[derive(Debug, PartialEq)]
 pub enum GitIdentityAction {
     /// User provided name and email to configure
     Configure { name: String, email: String },
@@ -176,8 +177,21 @@ pub async fn set_git_identity(working_dir: &Path, name: &str, email: &str) -> Re
 /// Interactively prompt the user to configure git identity or disable git features.
 /// Output goes to stderr to avoid polluting piped stdout.
 pub fn prompt_git_identity(missing_name: bool, missing_email: bool) -> Result<GitIdentityAction> {
-    let mut stderr = io::stderr();
+    prompt_git_identity_with(
+        &mut io::stdin().lock(),
+        &mut io::stderr(),
+        missing_name,
+        missing_email,
+    )
+}
 
+/// [`prompt_git_identity`] over any reader/writer, so the dialogue can be tested.
+fn prompt_git_identity_with(
+    reader: &mut impl BufRead,
+    stderr: &mut impl IoWrite,
+    missing_name: bool,
+    missing_email: bool,
+) -> Result<GitIdentityAction> {
     writeln!(stderr)?;
     writeln!(stderr, "Git identity is not fully configured.")?;
     if missing_name {
@@ -196,15 +210,12 @@ pub fn prompt_git_identity(missing_name: bool, missing_email: bool) -> Result<Gi
     writeln!(stderr, "  [2] Disable git features for this run")?;
     writeln!(stderr)?;
 
-    let stdin = io::stdin();
-    let mut reader = stdin.lock();
     let mut input = String::new();
 
     loop {
         write!(stderr, "Choose [1/2]: ")?;
         stderr.flush()?;
-        input.clear();
-        reader.read_line(&mut input)?;
+        read_answer(reader, &mut input)?;
         let choice = input.trim();
 
         match choice {
@@ -213,8 +224,7 @@ pub fn prompt_git_identity(missing_name: bool, missing_email: bool) -> Result<Gi
                     loop {
                         write!(stderr, "Enter user.name: ")?;
                         stderr.flush()?;
-                        input.clear();
-                        reader.read_line(&mut input)?;
+                        read_answer(reader, &mut input)?;
                         let val = input.trim().to_string();
                         if !val.is_empty() {
                             break val;
@@ -229,8 +239,7 @@ pub fn prompt_git_identity(missing_name: bool, missing_email: bool) -> Result<Gi
                     loop {
                         write!(stderr, "Enter user.email: ")?;
                         stderr.flush()?;
-                        input.clear();
-                        reader.read_line(&mut input)?;
+                        read_answer(reader, &mut input)?;
                         let val = input.trim().to_string();
                         if !val.is_empty() {
                             break val;
@@ -251,6 +260,15 @@ pub fn prompt_git_identity(missing_name: bool, missing_email: bool) -> Result<Gi
             }
         }
     }
+}
+
+/// Read one line of input, failing on end of input so a closed stdin can't loop the prompt
+fn read_answer(reader: &mut impl BufRead, input: &mut String) -> Result<()> {
+    input.clear();
+    if reader.read_line(input)? == 0 {
+        anyhow::bail!("stdin closed before git identity was entered");
+    }
+    Ok(())
 }
 
 /// Check if a directory is a git repository
@@ -707,6 +725,86 @@ mod tests {
             get_dirty_files(repo.path()).await.unwrap(),
             set(&["my file.txt"])
         );
+    }
+
+    /// Run the identity prompt on scripted input; returns the result and what it printed.
+    /// Runs on a thread with a timeout so a prompt that loops forever fails the test.
+    fn prompt(
+        input: &str,
+        missing_name: bool,
+        missing_email: bool,
+    ) -> (Result<GitIdentityAction>, String) {
+        let input = input.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut out = Vec::new();
+            let result = prompt_git_identity_with(
+                &mut io::Cursor::new(input),
+                &mut out,
+                missing_name,
+                missing_email,
+            );
+            let _ = tx.send((result, String::from_utf8(out).unwrap()));
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(2))
+            .expect("prompt did not return (looping on closed stdin?)")
+    }
+
+    #[test]
+    fn identity_prompt_collects_missing_name_and_email() {
+        let (result, out) = prompt("1\nAda\nada@example.com\n", true, true);
+        assert_eq!(
+            result.unwrap(),
+            GitIdentityAction::Configure {
+                name: "Ada".into(),
+                email: "ada@example.com".into()
+            }
+        );
+        assert!(out.contains("user.name is not set"), "{out}");
+        assert!(out.contains("user.email is not set"), "{out}");
+    }
+
+    #[test]
+    fn identity_prompt_only_asks_for_what_is_missing() {
+        let (result, out) = prompt("1\nada@example.com\n", false, true);
+        assert_eq!(
+            result.unwrap(),
+            GitIdentityAction::Configure {
+                name: String::new(),
+                email: "ada@example.com".into()
+            }
+        );
+        assert!(!out.contains("Enter user.name"), "{out}");
+    }
+
+    #[test]
+    fn identity_prompt_reprompts_on_bad_choice_and_empty_values() {
+        let (result, out) = prompt("3\n1\n\nAda\n  \nada@example.com\n", true, true);
+        assert!(matches!(
+            result.unwrap(),
+            GitIdentityAction::Configure { .. }
+        ));
+        assert!(
+            out.contains("Invalid choice. Please enter 1 or 2."),
+            "{out}"
+        );
+        assert!(out.contains("Name cannot be empty."), "{out}");
+        assert!(out.contains("Email cannot be empty."), "{out}");
+    }
+
+    #[test]
+    fn identity_prompt_can_disable_git() {
+        let (result, _) = prompt("2\n", true, false);
+        assert_eq!(result.unwrap(), GitIdentityAction::DisableGit);
+    }
+
+    #[test]
+    fn identity_prompt_errors_when_stdin_closes() {
+        // Ctrl-D (EOF) at any question must end the prompt, not spin forever.
+        for input in ["", "1\n", "1\nAda\n"] {
+            let (result, _) = prompt(input, true, true);
+            assert!(result.is_err(), "input {input:?} should error");
+        }
     }
 
     #[tokio::test]
