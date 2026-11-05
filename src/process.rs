@@ -375,51 +375,6 @@ pub fn matches_allowlist(path: &Path, pattern: &str) -> bool {
     }
 }
 
-/// Get list of files modified since last commit (or all uncommitted changes)
-/// Returns (allowed_files, unauthorized_files) based on the allowlist pattern
-#[allow(dead_code)]
-pub async fn check_git_changes(
-    allowlist_pattern: &str,
-    working_dir: &Path,
-) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
-    // Get list of modified/added/deleted files
-    let output = Command::new("git")
-        .args(["status", "--porcelain", "--untracked-files=all"])
-        .current_dir(working_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .context("Failed to run git status")?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let mut allowed = Vec::new();
-    let mut unauthorized = Vec::new();
-
-    for line in stdout.lines() {
-        // git status --porcelain format: XY filename
-        // First two chars are status, then space, then filename
-        if line.len() < 3 {
-            continue;
-        }
-        let file_path = line[3..].trim();
-        if file_path.is_empty() {
-            continue;
-        }
-
-        let path = PathBuf::from(file_path);
-
-        if matches_allowlist(&path, allowlist_pattern) {
-            allowed.push(path);
-        } else {
-            unauthorized.push(path);
-        }
-    }
-
-    Ok((allowed, unauthorized))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

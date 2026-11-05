@@ -123,14 +123,6 @@ impl TaskList {
             .filter(|(_, entry)| !entry.completed)
             .collect()
     }
-
-    /// Get state file path for a task
-    #[allow(dead_code)]
-    pub fn get_state_path(&self, tasks_dir: &Path, task_id: &str) -> Option<PathBuf> {
-        self.tasks
-            .get(task_id)
-            .map(|entry| tasks_dir.join(&entry.state_file))
-    }
 }
 
 #[cfg(test)]
@@ -174,17 +166,6 @@ mod tests {
         // Unknown IDs are ignored rather than inserted.
         list.mark_completed("task_99");
         assert_eq!(list.tasks.len(), 2);
-    }
-
-    #[test]
-    fn get_state_path_joins_tasks_dir() {
-        let mut list = TaskList::default();
-        let id = list.create_task(PathBuf::from("/w"), None);
-        assert_eq!(
-            list.get_state_path(Path::new("/root"), &id),
-            Some(PathBuf::from("/root/tasks/state_0.json"))
-        );
-        assert_eq!(list.get_state_path(Path::new("/root"), "nope"), None);
     }
 
     #[test]

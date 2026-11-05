@@ -101,12 +101,6 @@ pub struct Cli {
 }
 
 impl Cli {
-    /// Check if any git feature is requested (and not overridden by --no-git)
-    #[allow(dead_code)]
-    pub fn git_features_requested(&self) -> bool {
-        !self.no_git && (self.git || self.git_branch || self.git_commit)
-    }
-
     /// Check if we're in resume mode
     pub fn is_resume(&self) -> bool {
         self.resume.is_some()
@@ -254,21 +248,6 @@ mod tests {
             let full = std::iter::once("claude-loop-runner").chain(args.iter().copied());
             assert!(Cli::try_parse_from(full).is_err(), "{args:?} should fail");
         }
-    }
-
-    #[test]
-    fn git_features_requested() {
-        assert!(!parse(&[]).git_features_requested());
-        assert!(parse(&["--git"]).git_features_requested());
-        assert!(parse(&["--git-branch"]).git_features_requested());
-        assert!(parse(&["--git-commit"]).git_features_requested());
-        // A commit message alone does not request git.
-        assert!(!parse(&["--git-commit-message", "m"]).git_features_requested());
-        // --no-git overrides everything.
-        assert!(
-            !parse(&["--no-git", "--git", "--git-branch", "--git-commit"]).git_features_requested()
-        );
-        assert!(!parse(&["--no-git"]).git_features_requested());
     }
 
     #[test]

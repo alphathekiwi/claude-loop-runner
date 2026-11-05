@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn from_cli_does_not_apply_no_git() {
-        // --no-git is honoured elsewhere (Cli::git_features_requested), not in Config.
+        // --no-git is honoured in main after the config is built, not in Config.
         let c = Config::from_cli(&cli(&["-i", "i", "-p", "p", "--git", "--no-git"])).unwrap();
         assert!(c.git.enabled);
     }

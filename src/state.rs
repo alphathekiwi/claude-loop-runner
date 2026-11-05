@@ -98,33 +98,6 @@ impl State {
         Ok(())
     }
 
-    /// Get files that need processing (pending or in-progress states)
-    #[allow(dead_code)]
-    pub fn get_pending_files(&self) -> Vec<PathBuf> {
-        self.files
-            .iter()
-            .filter(|(_, state)| {
-                matches!(
-                    state.status,
-                    FileStatus::Pending
-                        | FileStatus::PromptInProgress
-                        | FileStatus::AwaitingVerification
-                )
-            })
-            .map(|(path, _)| path.clone())
-            .collect()
-    }
-
-    /// Get files awaiting verification
-    #[allow(dead_code)]
-    pub fn get_awaiting_verification(&self) -> Vec<PathBuf> {
-        self.files
-            .iter()
-            .filter(|(_, state)| state.status == FileStatus::AwaitingVerification)
-            .map(|(path, _)| path.clone())
-            .collect()
-    }
-
     /// Update status for a file
     pub fn update_status(&mut self, path: &Path, status: FileStatus) {
         if let Some(state) = self.files.get_mut(path) {
@@ -161,12 +134,6 @@ impl State {
         if let Some(state) = self.files.get_mut(path) {
             state.last_error = Some(error);
         }
-    }
-
-    /// Get original data for a file
-    #[allow(dead_code)]
-    pub fn get_original_data(&self, path: &Path) -> Option<serde_json::Value> {
-        self.files.get(path).map(|s| s.original_data.clone())
     }
 
     /// Get summary counts
@@ -234,11 +201,6 @@ mod tests {
         state
     }
 
-    fn sorted(mut v: Vec<PathBuf>) -> Vec<PathBuf> {
-        v.sort();
-        v
-    }
-
     #[test]
     fn new_state_is_empty() {
         let state = State::new(config());
@@ -252,11 +214,6 @@ mod tests {
     fn walks_the_full_pipeline_for_one_file() {
         let p = Path::new("a.rs");
         let mut state = state_with(&[("a.rs", FileStatus::Pending)]);
-        let pending_like = [
-            FileStatus::Pending,
-            FileStatus::PromptInProgress,
-            FileStatus::AwaitingVerification,
-        ];
         let steps = [
             FileStatus::PromptInProgress,
             FileStatus::AwaitingVerification,
@@ -268,35 +225,9 @@ mod tests {
         for status in steps {
             state.update_status(p, status.clone());
             assert_eq!(state.files[p].status, status);
-            assert_eq!(
-                state.get_pending_files().len(),
-                usize::from(pending_like.contains(&status))
-            );
-            assert_eq!(
-                state.get_awaiting_verification().len(),
-                usize::from(status == FileStatus::AwaitingVerification)
-            );
         }
         let summary = state.get_summary();
         assert_eq!((summary.total, summary.completed), (1, 1));
-    }
-
-    #[test]
-    fn pending_and_awaiting_filters_select_expected_statuses() {
-        let state = state_with(&[
-            ("p", FileStatus::Pending),
-            ("pi", FileStatus::PromptInProgress),
-            ("av", FileStatus::AwaitingVerification),
-            ("vi", FileStatus::VerifyInProgress),
-            ("fi", FileStatus::FixupInProgress),
-            ("c", FileStatus::Completed),
-            ("f", FileStatus::Failed),
-        ]);
-        assert_eq!(
-            sorted(state.get_pending_files()),
-            vec![PathBuf::from("av"), PathBuf::from("p"), PathBuf::from("pi")]
-        );
-        assert_eq!(state.get_awaiting_verification(), vec![PathBuf::from("av")]);
     }
 
     #[test]
@@ -340,7 +271,6 @@ mod tests {
         );
         assert_eq!(state.files.len(), 1);
         assert_eq!(state.get_attempts(ghost), 0);
-        assert!(state.get_original_data(ghost).is_none());
         assert_eq!(state.files[Path::new("a")].status, FileStatus::Pending);
     }
 
@@ -356,7 +286,7 @@ mod tests {
         state.set_error(p, "first".into());
         state.set_error(p, "second".into());
         assert_eq!(state.files[p].last_error.as_deref(), Some("second"));
-        assert_eq!(state.get_original_data(p), Some(json!({"path": "a"})));
+        assert_eq!(state.files[p].original_data, json!({"path": "a"}));
     }
 
     #[test]
@@ -479,8 +409,8 @@ mod tests {
         assert_eq!(state.config.claude_bin, "claude");
         assert!(!state.config.git.enabled);
         assert_eq!(
-            state.get_awaiting_verification(),
-            vec![PathBuf::from("a.rs")]
+            state.files[Path::new("a.rs")].status,
+            FileStatus::AwaitingVerification
         );
         assert_eq!(state.get_attempts(Path::new("a.rs")), 0);
     }
@@ -534,7 +464,7 @@ mod tests {
         let b = &state.files[Path::new("b")];
         assert_eq!(b.status, FileStatus::Pending);
         assert_eq!(b.original_data, json!({"n": 2}));
-        assert_eq!(state.get_original_data(Path::new("c")), Some(json!(null)));
+        assert_eq!(state.files[Path::new("c")].original_data, json!(null));
 
         // Merging again is idempotent.
         state.merge_input_file(&input).unwrap();
