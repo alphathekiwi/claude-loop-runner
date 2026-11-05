@@ -262,10 +262,11 @@ pub fn find_related_files(source_path: &Path, working_dir: &Path) -> Vec<PathBuf
 }
 
 /// Run a shell command and capture output
-pub async fn run_command(command: &str) -> Result<ProcessOutput> {
+pub async fn run_command(command: &str, working_dir: &Path) -> Result<ProcessOutput> {
     let output = Command::new("sh")
         .arg("-c")
         .arg(command)
+        .current_dir(working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

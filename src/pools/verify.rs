@@ -1,31 +1,28 @@
-use super::WorkerContext;
-use crate::claude::{build_fixup_prompt, run_claude};
-use crate::git::commit_file_changes;
+use super::{auto_commit, WorkerContext};
+use crate::claude::{build_fixup_prompt, require_success, run_claude};
 use crate::process::{expand_pattern_with_allowlist, parse_result, run_command};
 use crate::types::{FileStatus, FileTask};
 use async_channel::Receiver;
 use chrono::Utc;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 /// Spawn a pool of verification workers
 pub fn spawn_verify_pool(
     concurrency: usize,
     rx: Receiver<FileTask>,
     ctx: WorkerContext,
-    tasks_dir: PathBuf,
 ) -> Vec<JoinHandle<()>> {
     (0..concurrency)
         .map(|worker_id| {
             let rx = rx.clone();
             let ctx = ctx.clone();
-            let tasks_dir = tasks_dir.clone();
 
             tokio::spawn(async move {
-                verify_worker(worker_id, rx, ctx, tasks_dir).await;
+                verify_worker(worker_id, rx, ctx).await;
             })
         })
         .collect()
@@ -60,12 +57,8 @@ fn append_to_failure_log(tasks_dir: &Path, file_path: &Path, message: &str) {
     }
 }
 
-async fn verify_worker(
-    worker_id: usize,
-    rx: Receiver<FileTask>,
-    ctx: WorkerContext,
-    tasks_dir: PathBuf,
-) {
+async fn verify_worker(worker_id: usize, rx: Receiver<FileTask>, ctx: WorkerContext) {
+    let tasks_dir = ctx.tasks_dir.clone();
     let verification_cmd = match &ctx.config.verification_cmd {
         Some(cmd) => cmd.clone(),
         None => return,
@@ -117,7 +110,7 @@ async fn verify_worker(
                 &task.path,
                 &ctx.config.allowlist_pattern,
             );
-            let result = match run_command(&cmd).await {
+            let result = match run_command(&cmd, &ctx.working_dir).await {
                 Ok(r) => r,
                 Err(e) => {
                     error!(
@@ -143,35 +136,7 @@ async fn verify_worker(
                     "Verification PASSED"
                 );
 
-                // Auto-commit if enabled
-                if ctx.config.git.auto_commit {
-                    let description = ctx.config.git.commit_message_template.as_deref();
-                    match commit_file_changes(&ctx.working_dir, &task.path, description).await {
-                        Ok(Some(hash)) => {
-                            info!(
-                                worker = worker_id,
-                                file = %file_display,
-                                commit = %hash,
-                                "Auto-committed changes"
-                            );
-                        }
-                        Ok(None) => {
-                            debug!(
-                                worker = worker_id,
-                                file = %file_display,
-                                "No changes to commit"
-                            );
-                        }
-                        Err(e) => {
-                            warn!(
-                                worker = worker_id,
-                                file = %file_display,
-                                error = %e,
-                                "Failed to auto-commit (continuing anyway)"
-                            );
-                        }
-                    }
-                }
+                auto_commit(&ctx, worker_id, &task).await;
 
                 let mut state = ctx.state.lock().await;
                 state.update_status(&task.path, FileStatus::Completed);
@@ -269,7 +234,10 @@ async fn verify_worker(
                 info!(worker = worker_id, "Resuming fixup after usage quota reset");
             }
 
-            match run_claude(&ctx.config.claude_bin, &fixup_prompt, &ctx.working_dir).await {
+            let outcome = run_claude(&ctx.config.claude_bin, &fixup_prompt, &ctx.working_dir)
+                .await
+                .and_then(require_success);
+            match outcome {
                 Ok(output) => {
                     let response_log = format!(
                         "CLAUDE FIXUP RESPONSE:\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
