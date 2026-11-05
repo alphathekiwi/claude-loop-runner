@@ -9,6 +9,7 @@
 #   FAKE_RESULT=<json>       print `RESULT: <json>` (default `RESULT: "done"`)
 #   FAKE_LOG=<path>          append the target file path to <path>, one line per call
 #   FAKE_STDERR=<text>       print <text> to stderr
+#   FAKE_SLEEP=<secs>        sleep before handling the remaining directives
 #   FAKE_BARRIER=<n>         drop a marker in .fake-barrier/ and wait (up to 15s) until n
 #                            calls have done so; on timeout exit 7 before later directives
 set -u
@@ -33,6 +34,7 @@ while IFS= read -r line; do
         FAKE_RESULT=*) result="${line#FAKE_RESULT=}" ;;
         FAKE_LOG=*) echo "$target" >> "${line#FAKE_LOG=}" ;;
         FAKE_STDERR=*) echo "${line#FAKE_STDERR=}" >&2 ;;
+        FAKE_SLEEP=*) sleep "${line#FAKE_SLEEP=}" ;;
         FAKE_BARRIER=*)
             want="${line#FAKE_BARRIER=}"
             mkdir -p .fake-barrier
