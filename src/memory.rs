@@ -48,7 +48,13 @@ impl MemoryMonitor {
         let resume_notify = Arc::clone(&self.resume_notify);
 
         tokio::spawn(async move {
-            let mut sys = System::new();
+            let mut sys = match System::new() {
+                Ok(sys) => sys,
+                Err(e) => {
+                    warn!(error = %e, "Memory monitoring unavailable; workers won't pause on memory pressure");
+                    return;
+                }
+            };
 
             loop {
                 sys.refresh_memory();
