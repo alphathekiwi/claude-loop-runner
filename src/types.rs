@@ -81,3 +81,68 @@ pub struct ParsedResult {
     /// True if value is a raw unparsed string
     pub is_raw: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn file_status_serializes_snake_case_and_round_trips() {
+        let cases = [
+            (FileStatus::Pending, "pending"),
+            (FileStatus::PromptInProgress, "prompt_in_progress"),
+            (FileStatus::AwaitingVerification, "awaiting_verification"),
+            (FileStatus::VerifyInProgress, "verify_in_progress"),
+            (FileStatus::FixupInProgress, "fixup_in_progress"),
+            (FileStatus::Completed, "completed"),
+            (FileStatus::Failed, "failed"),
+        ];
+        for (status, name) in cases {
+            let encoded = serde_json::to_value(&status).unwrap();
+            assert_eq!(encoded, json!(name));
+            let decoded: FileStatus = serde_json::from_value(encoded).unwrap();
+            assert_eq!(decoded, status);
+        }
+        assert_eq!(FileStatus::default(), FileStatus::Pending);
+        assert!(serde_json::from_value::<FileStatus>(json!("PromptInProgress")).is_err());
+    }
+
+    #[test]
+    fn new_file_state_is_pending_with_no_result() {
+        let state = FileState::new(json!({"k": 1}));
+        assert_eq!(state.status, FileStatus::Pending);
+        assert_eq!(state.original_data, json!({"k": 1}));
+        assert_eq!(state.attempts, 0);
+        assert!(state.result_data.is_none());
+        assert!(state.result_data_raw.is_none());
+        assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn file_state_omits_unset_optionals_when_serialized() {
+        let encoded = serde_json::to_value(FileState::new(json!(null))).unwrap();
+        let obj = encoded.as_object().unwrap();
+        let mut keys: Vec<_> = obj.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["attempts", "original_data", "status"]);
+    }
+
+    #[test]
+    fn file_state_loads_minimal_older_json() {
+        let decoded: FileState =
+            serde_json::from_value(json!({"status": "completed", "original_data": [1, 2]}))
+                .unwrap();
+        assert_eq!(decoded.status, FileStatus::Completed);
+        assert_eq!(decoded.original_data, json!([1, 2]));
+        assert_eq!(decoded.attempts, 0);
+        assert!(decoded.result_data.is_none());
+        assert!(decoded.last_error.is_none());
+    }
+
+    #[test]
+    fn file_state_requires_status_and_original_data() {
+        assert!(serde_json::from_value::<FileState>(json!({"original_data": 1})).is_err());
+        assert!(serde_json::from_value::<FileState>(json!({"status": "pending"})).is_err());
+    }
+}
