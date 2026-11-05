@@ -378,3 +378,59 @@ fn empty_input_completes_with_nothing_to_do() {
         true
     );
 }
+
+#[test]
+fn agent_created_file_names_cannot_inject_into_the_verify_command() {
+    // Claude creates a file whose name matches the allowlist and contains shell syntax.
+    let repo = repo_with_files(&["src/Foo.ts"]);
+    let input = write_input(repo.path(), &["src/Foo.ts"]);
+    run_ok(
+        repo.path(),
+        &[
+            "--input",
+            input,
+            "--prompt",
+            "FAKE_WRITE=src/Foo;touch INJECTED;.ts",
+            "--verify",
+            "ls {created_files}",
+            "--no-git",
+            "--tasks-dir",
+            TASKS,
+        ],
+    );
+
+    assert!(!repo.path().join("INJECTED").exists());
+    // The quoted name reached ls as one argument, so verification passed.
+    let state = task_state(repo.path(), TASKS, "task_0");
+    assert_eq!(file_state(&state, "src/Foo.ts")["status"], "completed");
+}
+
+#[test]
+fn verify_placeholders_resolve_files_in_the_working_dir() {
+    let repo = repo_with_files(&["src/Foo.ts", "src/Foo.test.ts"]);
+    let input = write_input(repo.path(), &["src/Foo.ts"]);
+    let elsewhere = tempfile::tempdir().unwrap();
+    let input_abs = repo.path().join(input);
+
+    run_ok(
+        elsewhere.path(),
+        &[
+            "--input",
+            input_abs.to_str().unwrap(),
+            "--prompt",
+            "noop",
+            "-w",
+            repo.path().to_str().unwrap(),
+            "--verify",
+            "test \"{test_files}\" = src/Foo.test.ts",
+            "--max-retries",
+            "0",
+            "--no-git",
+            "--tasks-dir",
+            TASKS,
+        ],
+    );
+
+    let state = task_state(elsewhere.path(), TASKS, "task_0");
+    assert_eq!(file_state(&state, "src/Foo.ts")["status"], "completed");
+}

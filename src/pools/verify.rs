@@ -1,6 +1,6 @@
 use super::{auto_commit, WorkerContext};
 use crate::claude::{build_fixup_prompt, require_success, run_claude};
-use crate::process::{expand_pattern_with_allowlist, parse_result, run_command};
+use crate::process::{expand_command, parse_result, run_command};
 use crate::types::{FileStatus, FileTask};
 use async_channel::Receiver;
 use chrono::Utc;
@@ -105,10 +105,11 @@ async fn verify_worker(worker_id: usize, rx: Receiver<FileTask>, ctx: WorkerCont
             }
 
             // Run verification command
-            let cmd = expand_pattern_with_allowlist(
+            let cmd = expand_command(
                 &verification_cmd,
                 &task.path,
                 &ctx.config.allowlist_pattern,
+                &ctx.working_dir,
             );
             let result = match run_command(&cmd, &ctx.working_dir).await {
                 Ok(r) => r,
