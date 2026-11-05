@@ -74,8 +74,12 @@ Please fix the issues and try again.
 }
 
 /// Run the Claude CLI with the given prompt
-pub async fn run_claude(prompt: &str, working_dir: &Path) -> Result<ProcessOutput> {
-    let output = Command::new("claude")
+pub async fn run_claude(
+    claude_bin: &str,
+    prompt: &str,
+    working_dir: &Path,
+) -> Result<ProcessOutput> {
+    let output = Command::new(claude_bin)
         .arg("-p")
         .arg(prompt)
         .arg("--dangerously-skip-permissions") // Non-interactive mode
@@ -91,4 +95,89 @@ pub async fn run_claude(prompt: &str, working_dir: &Path) -> Result<ProcessOutpu
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         exit_code: output.status.code().unwrap_or(-1),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{fake_claude_path, git, temp_git_repo, write_file};
+
+    #[test]
+    fn build_prompt_includes_allowlist_file_and_result_instruction() {
+        let prompt = build_prompt(
+            "Add tests",
+            Path::new("src/Foo.tsx"),
+            &serde_json::json!({"coverage": 10}),
+            "{file_stem}*",
+        );
+        assert!(prompt.starts_with("Add tests"));
+        assert!(prompt.contains("matching the pattern: Foo*"));
+        assert!(prompt.contains("File: src/Foo.tsx"));
+        assert!(prompt.contains(r#"Original data: {"coverage":10}"#));
+        assert!(prompt.contains("RESULT:"));
+    }
+
+    #[test]
+    fn build_fixup_prompt_includes_error_output() {
+        let prompt = build_fixup_prompt(
+            "Fix it",
+            Path::new("src/Foo.tsx"),
+            "expected 1, got 2",
+            "{file_stem}*",
+        );
+        assert!(prompt.starts_with("Fix it"));
+        assert!(prompt.contains("expected 1, got 2"));
+        assert!(prompt.contains("File: src/Foo.tsx"));
+    }
+
+    #[tokio::test]
+    async fn run_claude_runs_binary_in_working_dir() {
+        let repo = temp_git_repo();
+        write_file(repo.path(), "src/Foo.tsx", "export {}\n");
+        git(repo.path(), &["add", "."]);
+        git(repo.path(), &["commit", "-q", "-m", "add Foo"]);
+        let prompt = build_prompt(
+            "FAKE_APPEND_TARGET\nFAKE_RESULT={\"coverage\": 90}",
+            Path::new("src/Foo.tsx"),
+            &serde_json::Value::Null,
+            "{file_stem}*",
+        );
+
+        let fake = fake_claude_path();
+        let output = run_claude(fake.to_str().unwrap(), &prompt, repo.path())
+            .await
+            .unwrap();
+
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.contains(r#"RESULT: {"coverage": 90}"#));
+        assert_eq!(
+            git(repo.path(), &["status", "--porcelain"]),
+            "M src/Foo.tsx"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_claude_reports_exit_code_and_stderr() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake = fake_claude_path();
+        let output = run_claude(
+            fake.to_str().unwrap(),
+            "FAKE_EXIT=3\nFAKE_STDERR=boom",
+            dir.path(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(output.exit_code, 3);
+        assert!(output.stderr.contains("boom"));
+    }
+
+    #[tokio::test]
+    async fn run_claude_errors_when_binary_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = run_claude("/nonexistent/claude", "hi", dir.path())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Failed to execute claude CLI"));
+    }
 }

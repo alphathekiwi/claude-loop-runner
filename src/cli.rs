@@ -85,6 +85,10 @@ pub struct Cli {
     #[arg(long)]
     pub no_git: bool,
 
+    /// Claude CLI binary to run (name on PATH or a path)
+    #[arg(long, default_value = "claude")]
+    pub claude_bin: String,
+
     /// Don't auto-launch into a tmux session
     #[arg(long)]
     pub no_tmux: bool,

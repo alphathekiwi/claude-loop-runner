@@ -47,6 +47,13 @@ pub struct Config {
     /// Git configuration
     #[serde(default)]
     pub git: GitConfig,
+    /// Claude CLI binary to run
+    #[serde(default = "default_claude_bin")]
+    pub claude_bin: String,
+}
+
+fn default_claude_bin() -> String {
+    "claude".to_string()
 }
 
 impl Config {
@@ -79,6 +86,7 @@ impl Config {
             max_files: cli.max_files,
             max_retries: cli.max_retries,
             git,
+            claude_bin: cli.claude_bin.clone(),
         })
     }
 
@@ -115,6 +123,9 @@ impl Config {
         // Only override max_retries if not default
         if cli.max_retries != 3 {
             self.max_retries = cli.max_retries;
+        }
+        if cli.claude_bin != "claude" {
+            self.claude_bin = cli.claude_bin.clone();
         }
         // Override git settings if explicitly enabled
         if cli.git {

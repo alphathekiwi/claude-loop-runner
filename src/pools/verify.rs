@@ -269,7 +269,7 @@ async fn verify_worker(
                 info!(worker = worker_id, "Resuming fixup after usage quota reset");
             }
 
-            match run_claude(&fixup_prompt, &ctx.working_dir).await {
+            match run_claude(&ctx.config.claude_bin, &fixup_prompt, &ctx.working_dir).await {
                 Ok(output) => {
                     let response_log = format!(
                         "CLAUDE FIXUP RESPONSE:\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",

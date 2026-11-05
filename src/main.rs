@@ -8,6 +8,8 @@ mod process;
 mod runner;
 mod state;
 mod task_list;
+#[cfg(test)]
+mod test_support;
 mod types;
 mod usage;
 
