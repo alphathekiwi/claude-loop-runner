@@ -29,9 +29,9 @@ pub struct Cli {
     #[arg(short, long)]
     pub verify: Option<String>,
 
-    /// Number of workers for prompt pool
-    #[arg(short, long, default_value = "5")]
-    pub concurrency: usize,
+    /// Number of workers for prompt pool [default: 5]
+    #[arg(short, long)]
+    pub concurrency: Option<usize>,
 
     /// Number of workers for verify pool (defaults to concurrency value)
     #[arg(long)]
@@ -41,9 +41,9 @@ pub struct Cli {
     #[arg(short, long)]
     pub max_files: Option<usize>,
 
-    /// File allowlist pattern for Claude ({file}, {file_stem}, {file_dir} substituted)
-    #[arg(short, long, default_value = "{file_stem}*")]
-    pub allowlist: String,
+    /// File allowlist pattern for Claude ({file}, {file_stem}, {file_dir} substituted) [default: {file_stem}*]
+    #[arg(short, long)]
+    pub allowlist: Option<String>,
 
     /// Tasks directory for state files and task list
     #[arg(short = 'd', long, default_value = "./claude-loop-tasks")]
@@ -53,9 +53,9 @@ pub struct Cli {
     #[arg(long)]
     pub resume: Option<Option<String>>,
 
-    /// Maximum number of fixup retry attempts
-    #[arg(long, default_value = "3")]
-    pub max_retries: u32,
+    /// Maximum number of fixup retry attempts [default: 3]
+    #[arg(long)]
+    pub max_retries: Option<u32>,
 
     /// Working directory for the task (defaults to current directory)
     #[arg(short = 'w', long)]
@@ -85,9 +85,9 @@ pub struct Cli {
     #[arg(long)]
     pub no_git: bool,
 
-    /// Claude CLI binary to run (name on PATH or a path)
-    #[arg(long, default_value = "claude")]
-    pub claude_bin: String,
+    /// Claude CLI binary to run (name on PATH or a path) [default: claude]
+    #[arg(long)]
+    pub claude_bin: Option<String>,
 
     /// Don't auto-launch into a tmux session
     #[arg(long)]
@@ -147,18 +147,19 @@ mod tests {
         assert_eq!(cli.prompt, None);
         assert_eq!(cli.fixup, None);
         assert_eq!(cli.verify, None);
-        assert_eq!(cli.concurrency, 5);
+        // Defaulted options stay None so a resume can tell "not passed" from "passed the default"
+        assert_eq!(cli.concurrency, None);
         assert_eq!(cli.verify_concurrency, None);
         assert_eq!(cli.max_files, None);
-        assert_eq!(cli.allowlist, "{file_stem}*");
+        assert_eq!(cli.allowlist, None);
         assert_eq!(cli.tasks_dir, PathBuf::from("./claude-loop-tasks"));
         assert_eq!(cli.resume, None);
-        assert_eq!(cli.max_retries, 3);
+        assert_eq!(cli.max_retries, None);
         assert_eq!(cli.working_dir, None);
         assert!(!cli.dry_run && !cli.git && !cli.git_branch && !cli.git_commit);
         assert!(!cli.no_git && !cli.no_tmux);
         assert_eq!(cli.git_commit_message, None);
-        assert_eq!(cli.claude_bin, "claude");
+        assert_eq!(cli.claude_bin, None);
         assert_eq!(cli.limit, 95.0);
         assert!(!cli.is_resume());
         assert_eq!(cli.resume_task_id(), None);
@@ -202,15 +203,15 @@ mod tests {
         assert_eq!(cli.prompt.as_deref(), Some("do it"));
         assert_eq!(cli.fixup.as_deref(), Some("fix it"));
         assert_eq!(cli.verify.as_deref(), Some("make test {file}"));
-        assert_eq!(cli.concurrency, 8);
+        assert_eq!(cli.concurrency, Some(8));
         assert_eq!(cli.max_files, Some(10));
-        assert_eq!(cli.allowlist, "*.rs");
+        assert_eq!(cli.allowlist.as_deref(), Some("*.rs"));
         assert_eq!(cli.tasks_dir, PathBuf::from("/tmp/tasks"));
         assert_eq!(cli.working_dir, Some(PathBuf::from("/work")));
         assert_eq!(cli.verify_concurrency, Some(2));
-        assert_eq!(cli.max_retries, 0);
+        assert_eq!(cli.max_retries, Some(0));
         assert!(cli.dry_run && cli.no_tmux);
-        assert_eq!(cli.claude_bin, "/opt/fake-claude");
+        assert_eq!(cli.claude_bin.as_deref(), Some("/opt/fake-claude"));
         assert_eq!(cli.limit, 50.5);
         assert_eq!(cli.git_commit_message.as_deref(), Some("chore: {file}"));
     }

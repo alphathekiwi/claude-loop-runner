@@ -549,60 +549,6 @@ pub async fn has_uncommitted_changes(working_dir: &Path) -> Result<bool> {
     Ok(!output.stdout.is_empty())
 }
 
-/// Stash current changes
-#[allow(dead_code)]
-pub async fn stash(working_dir: &Path, message: Option<&str>) -> Result<()> {
-    let mut args = vec!["stash", "push"];
-    if let Some(msg) = message {
-        args.push("-m");
-        args.push(msg);
-    }
-
-    let output = Command::new("git")
-        .args(&args)
-        .current_dir(working_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .context("Failed to stash changes")?;
-
-    if !output.status.success() {
-        anyhow::bail!(
-            "Failed to stash: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    info!("Stashed changes");
-    Ok(())
-}
-
-/// Pop the most recent stash
-#[allow(dead_code)]
-pub async fn stash_pop(working_dir: &Path) -> Result<()> {
-    let output = Command::new("git")
-        .args(["stash", "pop"])
-        .current_dir(working_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .context("Failed to pop stash")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // No stash is not an error
-        if stderr.contains("No stash entries found") {
-            return Ok(());
-        }
-        anyhow::bail!("Failed to pop stash: {}", stderr);
-    }
-
-    info!("Popped stash");
-    Ok(())
-}
-
 /// Check git changes against allowlist, filtering out pre-existing dirty files
 /// and files that match any task's global allowlist (for parallel worker support)
 pub async fn check_git_changes_filtered(

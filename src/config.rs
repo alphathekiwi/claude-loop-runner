@@ -52,8 +52,13 @@ pub struct Config {
     pub claude_bin: String,
 }
 
+pub const DEFAULT_CONCURRENCY: usize = 5;
+pub const DEFAULT_MAX_RETRIES: u32 = 3;
+pub const DEFAULT_ALLOWLIST: &str = "{file_stem}*";
+pub const DEFAULT_CLAUDE_BIN: &str = "claude";
+
 fn default_claude_bin() -> String {
-    "claude".to_string()
+    DEFAULT_CLAUDE_BIN.to_string()
 }
 
 impl Config {
@@ -80,13 +85,16 @@ impl Config {
             prompt,
             fixup_prompt: cli.fixup.clone(),
             verification_cmd: cli.verify.clone(),
-            allowlist_pattern: cli.allowlist.clone(),
-            concurrency: cli.concurrency,
+            allowlist_pattern: cli
+                .allowlist
+                .clone()
+                .unwrap_or_else(|| DEFAULT_ALLOWLIST.to_string()),
+            concurrency: cli.concurrency.unwrap_or(DEFAULT_CONCURRENCY),
             verify_concurrency: cli.verify_concurrency,
             max_files: cli.max_files,
-            max_retries: cli.max_retries,
+            max_retries: cli.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             git,
-            claude_bin: cli.claude_bin.clone(),
+            claude_bin: cli.claude_bin.clone().unwrap_or_else(default_claude_bin),
         })
     }
 
@@ -105,13 +113,11 @@ impl Config {
         if let Some(ref verify) = cli.verify {
             self.verification_cmd = Some(verify.clone());
         }
-        // Only override allowlist if not default
-        if cli.allowlist != "{file_stem}*" {
-            self.allowlist_pattern = cli.allowlist.clone();
+        if let Some(ref allowlist) = cli.allowlist {
+            self.allowlist_pattern = allowlist.clone();
         }
-        // Only override concurrency if not default
-        if cli.concurrency != 5 {
-            self.concurrency = cli.concurrency;
+        if let Some(concurrency) = cli.concurrency {
+            self.concurrency = concurrency;
         }
         // Override verify_concurrency if provided
         if cli.verify_concurrency.is_some() {
@@ -120,12 +126,11 @@ impl Config {
         if let Some(max_files) = cli.max_files {
             self.max_files = Some(max_files);
         }
-        // Only override max_retries if not default
-        if cli.max_retries != 3 {
-            self.max_retries = cli.max_retries;
+        if let Some(max_retries) = cli.max_retries {
+            self.max_retries = max_retries;
         }
-        if cli.claude_bin != "claude" {
-            self.claude_bin = cli.claude_bin.clone();
+        if let Some(ref claude_bin) = cli.claude_bin {
+            self.claude_bin = claude_bin.clone();
         }
         // Override git settings if explicitly enabled
         if cli.git {
@@ -316,10 +321,9 @@ mod tests {
     }
 
     #[test]
-    fn merge_ignores_explicitly_passed_default_values() {
-        // Documented limitation: the merge compares against clap's default values, so a
-        // user who explicitly passes the default (e.g. `-c 5` to go back from 9 workers)
-        // cannot override the saved value — it is indistinguishable from omitting the flag.
+    fn merge_applies_explicitly_passed_default_values() {
+        // Passing the default explicitly (e.g. `-c 5` to go back from 9 workers) must win
+        // over the saved value, even though it equals what omitting the flag would give.
         let c = saved().merge_with_cli(&cli(&[
             "--resume",
             "-c",
@@ -331,7 +335,10 @@ mod tests {
             "--claude-bin",
             "claude",
         ]));
-        assert_unchanged(&c);
+        assert_eq!(c.concurrency, DEFAULT_CONCURRENCY);
+        assert_eq!(c.max_retries, DEFAULT_MAX_RETRIES);
+        assert_eq!(c.allowlist_pattern, DEFAULT_ALLOWLIST);
+        assert_eq!(c.claude_bin, DEFAULT_CLAUDE_BIN);
     }
 
     #[test]

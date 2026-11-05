@@ -3,6 +3,7 @@ mod cli;
 mod config;
 mod git;
 mod memory;
+mod pause;
 mod pools;
 mod process;
 mod runner;
@@ -38,7 +39,7 @@ async fn main() -> Result<()> {
     cli.validate()?;
 
     // Validate concurrency
-    if cli.concurrency == 0 {
+    if cli.concurrency == Some(0) {
         anyhow::bail!("--concurrency must be at least 1");
     }
 
@@ -65,7 +66,7 @@ async fn main() -> Result<()> {
 
             info!(task_id = %specific_task_id, state_file = %entry.state_file, "Resuming task");
 
-            let config = state.config.clone().merge_with_cli(&cli);
+            let (config, state) = apply_resume_overrides(state, &cli, &state_path)?;
             (config, state, state_path, specific_task_id.to_string())
         } else {
             // Resume first incomplete task
@@ -81,7 +82,7 @@ async fn main() -> Result<()> {
 
             info!(task_id = %task_id, state_file = %entry.state_file, "Resuming first incomplete task");
 
-            let config = state.config.clone().merge_with_cli(&cli);
+            let (config, state) = apply_resume_overrides(state, &cli, &state_path)?;
             (config, state, state_path, task_id.to_string())
         }
     } else {
@@ -112,12 +113,13 @@ async fn main() -> Result<()> {
         if cli.git || cli.git_branch || cli.git_commit {
             let file_paths: Vec<_> = state.files.keys().cloned().collect();
             for path in &file_paths {
-                let expanded = process::expand_pattern(&cli.allowlist, path);
+                let expanded = process::expand_pattern(&config.allowlist_pattern, path);
                 state.git_state.add_allowlist_pattern(expanded);
 
                 // Discover related test/snapshot files and add their patterns too
                 for related in process::find_related_files(path, &working_dir) {
-                    let related_pattern = process::expand_pattern(&cli.allowlist, &related);
+                    let related_pattern =
+                        process::expand_pattern(&config.allowlist_pattern, &related);
                     state.git_state.add_allowlist_pattern(related_pattern);
                 }
             }
@@ -357,6 +359,21 @@ async fn main() -> Result<()> {
 
 /// Shorten a prompt for the task list, cutting on a char boundary so
 /// multi-byte characters can't panic the slice.
+/// Merge CLI flags over a resumed task's saved config and persist the result, so the
+/// overrides survive the next resume rather than applying to this run only.
+fn apply_resume_overrides(
+    mut state: State,
+    cli: &Cli,
+    state_path: &std::path::Path,
+) -> Result<(Config, State)> {
+    let config = state.config.clone().merge_with_cli(cli);
+    state.config = config.clone();
+    state
+        .save(state_path)
+        .context("Failed to save resumed task config")?;
+    Ok((config, state))
+}
+
 fn truncate_description(prompt: &str) -> String {
     if prompt.chars().count() > 50 {
         format!("{}...", prompt.chars().take(47).collect::<String>())
