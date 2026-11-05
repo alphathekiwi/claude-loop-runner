@@ -659,4 +659,407 @@ mod tests {
         assert!(git_state.was_pre_existing_dirty(Path::new("dirty.txt")));
         assert!(!git_state.was_pre_existing_dirty(Path::new("clean.txt")));
     }
+
+    use crate::test_support::{git, temp_git_repo, write_file};
+
+    fn set(paths: &[&str]) -> HashSet<PathBuf> {
+        paths.iter().map(PathBuf::from).collect()
+    }
+
+    fn sorted(mut v: Vec<PathBuf>) -> Vec<PathBuf> {
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn add_allowlist_pattern_dedupes_and_matches() {
+        let mut state = GitState::default();
+        state.add_allowlist_pattern("foo*".to_string());
+        state.add_allowlist_pattern("foo*".to_string());
+        state.add_allowlist_pattern("bar.rs".to_string());
+        assert_eq!(state.global_allowlist_patterns, vec!["foo*", "bar.rs"]);
+
+        assert!(state.matches_global_allowlist(Path::new("src/foo.test.ts")));
+        assert!(state.matches_global_allowlist(Path::new("src/bar.rs")));
+        assert!(!state.matches_global_allowlist(Path::new("src/baz.rs")));
+        assert!(!GitState::default().matches_global_allowlist(Path::new("foo.rs")));
+    }
+
+    #[tokio::test]
+    async fn is_git_repo_true_and_false() {
+        let repo = temp_git_repo();
+        assert!(is_git_repo(repo.path()).await.unwrap());
+        let plain = tempfile::tempdir().unwrap();
+        assert!(!is_git_repo(plain.path()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn is_git_repo_errors_on_missing_dir() {
+        let plain = tempfile::tempdir().unwrap();
+        assert!(is_git_repo(&plain.path().join("nope")).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn capture_outside_repo_disables_git() {
+        let plain = tempfile::tempdir().unwrap();
+        let state = GitState::capture(plain.path()).await.unwrap();
+        assert!(!state.enabled);
+        assert!(state.original_branch.is_none());
+        assert!(state.pre_existing_dirty_files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn capture_records_branch_and_pre_existing_dirty_files() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        write_file(root, "README.md", "changed\n");
+        write_file(root, "new/untracked.txt", "x\n");
+
+        let state = GitState::capture(root).await.unwrap();
+        assert!(state.enabled);
+        assert_eq!(state.original_branch.as_deref(), Some("main"));
+        assert!(state.task_branch.is_none());
+        assert_eq!(
+            state.pre_existing_dirty_files,
+            set(&["README.md", "new/untracked.txt"])
+        );
+    }
+
+    #[tokio::test]
+    async fn capture_clean_repo_has_no_dirty_files() {
+        let repo = temp_git_repo();
+        let state = GitState::capture(repo.path()).await.unwrap();
+        assert!(state.enabled);
+        assert!(state.pre_existing_dirty_files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn check_git_identity_configured() {
+        let repo = temp_git_repo();
+        match check_git_identity(repo.path()).await.unwrap() {
+            GitIdentityStatus::Configured { name, email } => {
+                assert_eq!(name, "Test User");
+                assert_eq!(email, "test@example.com");
+            }
+            GitIdentityStatus::Missing { .. } => panic!("expected Configured"),
+        }
+    }
+
+    // A local empty value shadows any global/system value (last one wins) and
+    // reads back as None, so this is hermetic regardless of the machine's config.
+    #[tokio::test]
+    async fn check_git_identity_missing_when_blank_locally() {
+        let repo = temp_git_repo();
+        git(repo.path(), &["config", "user.email", ""]);
+        match check_git_identity(repo.path()).await.unwrap() {
+            GitIdentityStatus::Missing { name, email } => {
+                assert_eq!(name.as_deref(), Some("Test User"));
+                assert_eq!(email, None);
+            }
+            GitIdentityStatus::Configured { .. } => panic!("expected Missing"),
+        }
+
+        git(repo.path(), &["config", "user.name", ""]);
+        match check_git_identity(repo.path()).await.unwrap() {
+            GitIdentityStatus::Missing { name, email } => {
+                assert_eq!(name, None);
+                assert_eq!(email, None);
+            }
+            GitIdentityStatus::Configured { .. } => panic!("expected Missing"),
+        }
+    }
+
+    #[tokio::test]
+    async fn set_git_identity_writes_local_config() {
+        let repo = temp_git_repo();
+        set_git_identity(repo.path(), "New Name", "new@example.com")
+            .await
+            .unwrap();
+        assert_eq!(
+            git(repo.path(), &["config", "--local", "user.name"]),
+            "New Name"
+        );
+        assert_eq!(
+            git(repo.path(), &["config", "--local", "user.email"]),
+            "new@example.com"
+        );
+        assert!(matches!(
+            check_git_identity(repo.path()).await.unwrap(),
+            GitIdentityStatus::Configured { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn set_git_identity_fails_outside_repo() {
+        let plain = tempfile::tempdir().unwrap();
+        let err = set_git_identity(plain.path(), "n", "e")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("user.name"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn get_current_branch_reports_branch_and_errors_outside_repo() {
+        let repo = temp_git_repo();
+        assert_eq!(get_current_branch(repo.path()).await.unwrap(), "main");
+        git(repo.path(), &["checkout", "-q", "-b", "feature/x"]);
+        assert_eq!(get_current_branch(repo.path()).await.unwrap(), "feature/x");
+
+        let plain = tempfile::tempdir().unwrap();
+        assert!(get_current_branch(plain.path()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_dirty_files_covers_modified_untracked_deleted_and_renamed() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        write_file(root, "old.txt", "rename me\n");
+        write_file(root, "gone.txt", "delete me\n");
+        git(root, &["add", "."]);
+        git(root, &["commit", "-q", "-m", "more"]);
+
+        write_file(root, "README.md", "modified\n");
+        write_file(root, "dir/sub/untracked.txt", "u\n");
+        std::fs::remove_file(root.join("gone.txt")).unwrap();
+        git(root, &["mv", "old.txt", "renamed.txt"]);
+
+        assert_eq!(
+            get_dirty_files(root).await.unwrap(),
+            set(&[
+                "README.md",
+                "dir/sub/untracked.txt",
+                "gone.txt",
+                "renamed.txt"
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn get_dirty_files_empty_when_clean() {
+        let repo = temp_git_repo();
+        assert!(get_dirty_files(repo.path()).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: git status --porcelain C-quotes paths with spaces; get_dirty_files keeps the quotes"]
+    async fn get_dirty_files_unquotes_paths_with_spaces() {
+        let repo = temp_git_repo();
+        write_file(repo.path(), "my file.txt", "x\n");
+        assert_eq!(
+            get_dirty_files(repo.path()).await.unwrap(),
+            set(&["my file.txt"])
+        );
+    }
+
+    #[tokio::test]
+    async fn create_task_branch_and_checkout_branch() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        let branch = create_task_branch(root, "task1").await.unwrap();
+        assert!(branch.starts_with("claude-loop/task1-"), "{branch}");
+        // timestamp suffix: YYYYMMDD-HHMMSS
+        let suffix = branch.strip_prefix("claude-loop/task1-").unwrap();
+        assert_eq!(suffix.len(), 15);
+        assert_eq!(get_current_branch(root).await.unwrap(), branch);
+
+        checkout_branch(root, "main").await.unwrap();
+        assert_eq!(get_current_branch(root).await.unwrap(), "main");
+
+        // An invalid ref name is rejected.
+        let err = create_task_branch(root, "bad..name").await.unwrap_err();
+        assert!(err.to_string().contains("Failed to create branch"), "{err}");
+        let err = checkout_branch(root, "does-not-exist").await.unwrap_err();
+        assert!(err.to_string().contains("does-not-exist"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn stage_and_commit_returns_short_hash() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        write_file(root, "a.txt", "a\n");
+        write_file(root, "b.txt", "b\n");
+
+        stage_files(root, &[]).await.unwrap();
+        stage_files(root, &[PathBuf::from("a.txt")]).await.unwrap();
+        assert_eq!(git(root, &["diff", "--cached", "--name-only"]), "a.txt");
+
+        let hash = commit(root, "add a").await.unwrap();
+        assert_eq!(hash, git(root, &["rev-parse", "--short", "HEAD"]));
+        assert_eq!(git(root, &["log", "-1", "--format=%s"]), "add a");
+        // b.txt was not staged so it is still untracked.
+        assert_eq!(get_dirty_files(root).await.unwrap(), set(&["b.txt"]));
+    }
+
+    #[tokio::test]
+    async fn stage_files_errors_on_unknown_path() {
+        let repo = temp_git_repo();
+        let err = stage_files(repo.path(), &[PathBuf::from("missing.txt")])
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Failed to stage files"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn commit_fails_outside_repo() {
+        let plain = tempfile::tempdir().unwrap();
+        assert!(commit(plain.path(), "msg").await.is_err());
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: git prints 'nothing to commit' on stdout, but commit() only checks stderr"]
+    async fn commit_with_nothing_staged_returns_empty_hash() {
+        let repo = temp_git_repo();
+        assert_eq!(commit(repo.path(), "noop").await.unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn commit_file_changes_only_commits_related_files() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        write_file(root, "src/widget.rs", "fn w() {}\n");
+        write_file(root, "src/widget.test.rs", "#[test] fn t() {}\n");
+        write_file(root, "src/other.rs", "fn o() {}\n");
+
+        let hash = commit_file_changes(root, Path::new("src/widget.rs"), None)
+            .await
+            .unwrap()
+            .expect("expected a commit");
+        assert_eq!(hash, git(root, &["rev-parse", "--short", "HEAD"]));
+        assert_eq!(
+            git(root, &["log", "-1", "--format=%s"]),
+            "claude-loop: widget.rs"
+        );
+        let committed = git(root, &["show", "--name-only", "--format=", "HEAD"]);
+        let mut committed: Vec<&str> = committed.lines().collect();
+        committed.sort();
+        assert_eq!(committed, vec!["src/widget.rs", "src/widget.test.rs"]);
+        assert_eq!(get_dirty_files(root).await.unwrap(), set(&["src/other.rs"]));
+    }
+
+    #[tokio::test]
+    #[ignore = "bug: commit() runs `git commit -m`, so anything already staged is swept into the per-file commit"]
+    async fn commit_file_changes_leaves_unrelated_staged_files_out() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        write_file(root, "staged_by_user.txt", "s\n");
+        git(root, &["add", "staged_by_user.txt"]);
+        write_file(root, "src/widget.rs", "w\n");
+
+        commit_file_changes(root, Path::new("src/widget.rs"), None)
+            .await
+            .unwrap()
+            .expect("expected a commit");
+        assert_eq!(
+            git(root, &["show", "--name-only", "--format=", "HEAD"]),
+            "src/widget.rs"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_file_changes_message_includes_description() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        write_file(root, "lib/thing.ts", "export {};\n");
+        commit_file_changes(root, Path::new("lib/thing.ts"), Some("add tests"))
+            .await
+            .unwrap()
+            .expect("expected a commit");
+        assert_eq!(
+            git(root, &["log", "-1", "--format=%s"]),
+            "claude-loop: thing.ts (add tests)"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_file_changes_none_when_nothing_related_changed() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        let head = git(root, &["rev-parse", "HEAD"]);
+        assert!(commit_file_changes(root, Path::new("src/widget.rs"), None)
+            .await
+            .unwrap()
+            .is_none());
+
+        write_file(root, "src/unrelated.rs", "x\n");
+        assert!(commit_file_changes(root, Path::new("src/widget.rs"), None)
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(git(root, &["rev-parse", "HEAD"]), head);
+    }
+
+    #[tokio::test]
+    async fn diffs_and_uncommitted_changes() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        assert!(!has_uncommitted_changes(root).await.unwrap());
+        assert_eq!(get_staged_diff(root).await.unwrap(), "");
+        assert_eq!(
+            get_file_diff(root, Path::new("README.md")).await.unwrap(),
+            ""
+        );
+
+        write_file(root, "README.md", "changed line\n");
+        assert!(has_uncommitted_changes(root).await.unwrap());
+        let diff = get_file_diff(root, Path::new("README.md")).await.unwrap();
+        assert!(diff.contains("-test repo"), "{diff}");
+        assert!(diff.contains("+changed line"), "{diff}");
+        assert_eq!(get_staged_diff(root).await.unwrap(), "");
+
+        git(root, &["add", "README.md"]);
+        let staged = get_staged_diff(root).await.unwrap();
+        assert!(staged.contains("+changed line"), "{staged}");
+        assert_eq!(
+            get_file_diff(root, Path::new("README.md")).await.unwrap(),
+            ""
+        );
+    }
+
+    #[tokio::test]
+    async fn has_uncommitted_changes_sees_untracked_files() {
+        let repo = temp_git_repo();
+        write_file(repo.path(), "new.txt", "n\n");
+        assert!(has_uncommitted_changes(repo.path()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn check_git_changes_filtered_splits_allowed_and_unauthorized() {
+        let repo = temp_git_repo();
+        let root = repo.path();
+        write_file(root, "README.md", "dirty before start\n");
+        let mut state = GitState::capture(root).await.unwrap();
+        state.add_allowlist_pattern("peer*".to_string());
+
+        write_file(root, "src/widget.rs", "w\n");
+        write_file(root, "src/widget.test.rs", "t\n");
+        write_file(root, "src/peer.rs", "p\n");
+        write_file(root, "src/rogue.rs", "r\n");
+        // Pre-existing dirty file modified again is still ignored.
+        write_file(root, "README.md", "dirty again\n");
+
+        let (allowed, unauthorized) = check_git_changes_filtered("widget*", root, &state)
+            .await
+            .unwrap();
+        assert_eq!(
+            sorted(allowed),
+            vec![
+                PathBuf::from("src/peer.rs"),
+                PathBuf::from("src/widget.rs"),
+                PathBuf::from("src/widget.test.rs"),
+            ]
+        );
+        assert_eq!(unauthorized, vec![PathBuf::from("src/rogue.rs")]);
+    }
+
+    #[tokio::test]
+    async fn check_git_changes_filtered_clean_repo_is_empty() {
+        let repo = temp_git_repo();
+        let state = GitState::capture(repo.path()).await.unwrap();
+        let (allowed, unauthorized) = check_git_changes_filtered("*", repo.path(), &state)
+            .await
+            .unwrap();
+        assert!(allowed.is_empty());
+        assert!(unauthorized.is_empty());
+    }
 }
