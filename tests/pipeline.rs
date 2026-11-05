@@ -91,7 +91,7 @@ fn failed_verification_runs_fixup_then_passes() {
     assert_eq!(line_count(&repo.path().join("fixups.log")), 1);
 
     let log = std::fs::read_to_string(repo.path().join(TASKS).join("failures/Foo.ts.log")).unwrap();
-    assert!(log.contains("VERIFICATION FAILED (attempt 1/3)"), "{log}");
+    assert!(log.contains("VERIFICATION FAILED (attempt 1/4)"), "{log}");
     assert!(log.contains("missing fixed marker"), "{log}");
     // The fixup prompt carries the verify error output and the file under work.
     assert!(log.contains("FIXUP PROMPT SENT:"), "{log}");
@@ -127,15 +127,15 @@ fn verification_that_never_passes_marks_file_failed_after_max_retries() {
     let state = task_state(repo.path(), TASKS, "task_0");
     let fs = file_state(&state, "src/Foo.ts");
     assert_eq!(fs["status"], "failed");
-    assert_eq!(fs["attempts"], 3);
+    assert_eq!(fs["attempts"], 4);
     assert_eq!(fs["last_error"], "still broken\n");
-    // Three verifications, with a fixup between each: two fixups in total.
-    assert_eq!(line_count(&repo.path().join("fixups.log")), 2);
+    // Three retries: four verifications with a fixup between each.
+    assert_eq!(line_count(&repo.path().join("fixups.log")), 3);
 
     let log = std::fs::read_to_string(repo.path().join(TASKS).join("failures/Foo.ts.log")).unwrap();
-    for attempt in 1..=3 {
+    for attempt in 1..=4 {
         assert!(
-            log.contains(&format!("VERIFICATION FAILED (attempt {attempt}/3)")),
+            log.contains(&format!("VERIFICATION FAILED (attempt {attempt}/4)")),
             "{log}"
         );
     }
@@ -153,7 +153,6 @@ fn verification_that_never_passes_marks_file_failed_after_max_retries() {
 }
 
 #[test]
-#[ignore = "bug: --max-retries N runs only N-1 fixups (verify.rs:203 checks attempts >= max_retries before the fixup)"]
 fn max_retries_counts_fixup_attempts() {
     let repo = repo_with_files(&["src/Foo.ts"]);
     let input = write_input(repo.path(), &["src/Foo.ts"]);
@@ -204,7 +203,7 @@ fn verify_stdout_is_used_as_error_when_stderr_is_empty() {
     let state = task_state(repo.path(), TASKS, "task_0");
     let fs = file_state(&state, "src/Foo.ts");
     assert_eq!(fs["status"], "failed");
-    assert_eq!(fs["attempts"], 1);
+    assert_eq!(fs["attempts"], 2);
     assert_eq!(fs["last_error"], "stdout failure\n");
 }
 

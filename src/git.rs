@@ -300,8 +300,9 @@ pub async fn get_current_branch(working_dir: &Path) -> Result<String> {
 
 /// Get all dirty files (modified, added, deleted, untracked)
 pub async fn get_dirty_files(working_dir: &Path) -> Result<HashSet<PathBuf>> {
+    // -z gives NUL-separated, unquoted paths, so spaces and non-ASCII survive intact
     let output = Command::new("git")
-        .args(["status", "--porcelain", "--untracked-files=all"])
+        .args(["status", "--porcelain", "-z", "--untracked-files=all"])
         .current_dir(working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -312,18 +313,15 @@ pub async fn get_dirty_files(working_dir: &Path) -> Result<HashSet<PathBuf>> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut files = HashSet::new();
 
-    for line in stdout.lines() {
-        if line.len() < 3 {
+    let mut entries = stdout.split('\0');
+    while let Some(entry) = entries.next() {
+        let Some(file_path) = entry.get(3..).filter(|p| !p.is_empty()) else {
             continue;
-        }
-        let file_path = line[3..].trim();
-        if !file_path.is_empty() {
-            // Handle renamed files (format: "R  old -> new")
-            if let Some(arrow_pos) = file_path.find(" -> ") {
-                files.insert(PathBuf::from(&file_path[arrow_pos + 4..]));
-            } else {
-                files.insert(PathBuf::from(file_path));
-            }
+        };
+        files.insert(PathBuf::from(file_path));
+        // Renames and copies ("R  new\0old\0") are followed by the original path; skip it
+        if entry.starts_with(['R', 'C']) {
+            entries.next();
         }
     }
 
@@ -853,7 +851,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "bug: git status --porcelain C-quotes paths with spaces; get_dirty_files keeps the quotes"]
     async fn get_dirty_files_unquotes_paths_with_spaces() {
         let repo = temp_git_repo();
         write_file(repo.path(), "my file.txt", "x\n");
