@@ -20,57 +20,91 @@ pub fn extract_file_stem(file_path: &Path) -> String {
         .unwrap_or(stem)
 }
 
-/// Expand pattern placeholders with file path components
-/// Supports: {file}, {file_stem}, {file_dir}, {all_files}, {test_files}, {created_files}
+/// Expand `{file}`, `{file_stem}` and `{file_dir}` in an allowlist pattern.
+/// The result is a glob-style pattern, not a shell command; see [`expand_command`].
 pub fn expand_pattern(pattern: &str, file_path: &Path) -> String {
-    expand_pattern_with_allowlist(pattern, file_path, "{file_stem}*")
-}
-
-/// Expand pattern placeholders with file path components and a custom allowlist
-/// Supports: {file}, {file_stem}, {file_dir}, {all_files}, {test_files}, {created_files}
-pub fn expand_pattern_with_allowlist(pattern: &str, file_path: &Path, allowlist: &str) -> String {
-    let file_str = file_path.to_string_lossy();
-
-    let file_stem = extract_file_stem(file_path);
-
     let file_dir = file_path
         .parent()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    // Only compute these if needed (they involve filesystem operations)
-    let all_files = if pattern.contains("{all_files}") {
-        find_all_files(file_path, allowlist).join(" ")
-    } else {
-        String::new()
-    };
+    pattern
+        .replace("{file}", &file_path.to_string_lossy())
+        .replace("{file_stem}", &extract_file_stem(file_path))
+        .replace("{file_dir}", &file_dir)
+}
 
-    let test_files = if pattern.contains("{test_files}") {
-        find_test_files(file_path, allowlist).join(" ")
-    } else {
-        String::new()
-    };
+/// Expand a verification command template for one file.
+///
+/// Supports `{file}`, `{file_stem}`, `{file_dir}`, `{all_files}`, `{test_files}` and
+/// `{created_files}`. Every substituted path is shell-quoted, because file names can
+/// come from the agent (anything it creates that matches the allowlist) and the
+/// command runs under `sh -c`. File discovery is relative to `working_dir`.
+pub fn expand_command(
+    pattern: &str,
+    file_path: &Path,
+    allowlist: &str,
+    working_dir: &Path,
+) -> String {
+    let file_dir = file_path
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
 
-    let created_files = if pattern.contains("{created_files}") {
-        find_created_files(file_path, allowlist).join(" ")
-    } else {
-        String::new()
+    // Only search the filesystem for placeholders the command actually uses
+    let list = |placeholder: &str, find: fn(&Path, &str, &Path) -> Vec<String>| {
+        if pattern.contains(placeholder) {
+            quote_all(&find(file_path, allowlist, working_dir))
+        } else {
+            String::new()
+        }
     };
+    let all_files = list("{all_files}", find_all_files);
+    let test_files = list("{test_files}", find_test_files);
+    let created_files = list("{created_files}", find_created_files);
 
     pattern
-        .replace("{file}", &file_str)
-        .replace("{file_stem}", &file_stem)
-        .replace("{file_dir}", &file_dir)
+        .replace("{file}", &shell_quote(&file_path.to_string_lossy()))
+        .replace("{file_stem}", &shell_quote(&extract_file_stem(file_path)))
+        .replace("{file_dir}", &shell_quote(&file_dir))
         .replace("{all_files}", &all_files)
         .replace("{test_files}", &test_files)
         .replace("{created_files}", &created_files)
 }
 
+/// Quote a string as a single POSIX shell word. Empty input stays empty, so an
+/// absent `{file_dir}` expands to nothing rather than an empty argument.
+pub fn shell_quote(s: &str) -> String {
+    if s.is_empty() {
+        return String::new();
+    }
+    let safe = s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "_-./+,:@%=".contains(c));
+    if safe {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', r"'\''"))
+    }
+}
+
+fn quote_all(paths: &[String]) -> String {
+    paths
+        .iter()
+        .map(|p| shell_quote(p))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Find all files matching the allowlist pattern (includes the source file)
 /// Returns: {file} and any files that match the allowlist glob
-pub fn find_all_files(file_path: &Path, allowlist_pattern: &str) -> Vec<String> {
+pub fn find_all_files(
+    file_path: &Path,
+    allowlist_pattern: &str,
+    working_dir: &Path,
+) -> Vec<String> {
     let glob_pattern = expand_allowlist_to_glob(file_path, allowlist_pattern);
-    let mut files = collect_glob_matches(&glob_pattern);
+    let mut files = collect_glob_matches(&glob_pattern, working_dir);
 
     // Ensure the source file is included
     let file_str = file_path.to_string_lossy().to_string();
@@ -81,20 +115,20 @@ pub fn find_all_files(file_path: &Path, allowlist_pattern: &str) -> Vec<String> 
     files
 }
 
-/// Find test files that likely correspond to the source file
-/// Looks for files with common test patterns: *.test.*, *.spec.*, *_test.*, *_spec.*
-pub fn find_test_files(file_path: &Path, allowlist_pattern: &str) -> Vec<String> {
-    let all_files = find_all_files(file_path, allowlist_pattern);
+/// Find test files matching the allowlist pattern (excludes the source file)
+pub fn find_test_files(
+    file_path: &Path,
+    allowlist_pattern: &str,
+    working_dir: &Path,
+) -> Vec<String> {
     let file_str = file_path.to_string_lossy().to_string();
 
-    all_files
+    find_all_files(file_path, allowlist_pattern, working_dir)
         .into_iter()
         .filter(|f| {
-            // Exclude the source file itself
             if f == &file_str {
                 return false;
             }
-            // Match common test file patterns
             let lower = f.to_lowercase();
             lower.contains(".test.")
                 || lower.contains(".spec.")
@@ -107,55 +141,56 @@ pub fn find_test_files(file_path: &Path, allowlist_pattern: &str) -> Vec<String>
         .collect()
 }
 
-/// Find files that match the allowlist glob but are NOT the source file itself
-/// These are likely files created by Claude during processing
-pub fn find_created_files(file_path: &Path, allowlist_pattern: &str) -> Vec<String> {
+/// Find files matching the allowlist other than the source file itself
+pub fn find_created_files(
+    file_path: &Path,
+    allowlist_pattern: &str,
+    working_dir: &Path,
+) -> Vec<String> {
     let glob_pattern = expand_allowlist_to_glob(file_path, allowlist_pattern);
-    let files = collect_glob_matches(&glob_pattern);
     let file_str = file_path.to_string_lossy().to_string();
 
-    files.into_iter().filter(|f| f != &file_str).collect()
+    collect_glob_matches(&glob_pattern, working_dir)
+        .into_iter()
+        .filter(|f| f != &file_str)
+        .collect()
 }
 
 /// Expand an allowlist pattern to a glob pattern for filesystem searching
 fn expand_allowlist_to_glob(file_path: &Path, allowlist_pattern: &str) -> String {
-    let file_str = file_path.to_string_lossy();
-
-    let file_stem = extract_file_stem(file_path);
-
+    let expanded = expand_pattern(allowlist_pattern, file_path);
     let file_dir = file_path
         .parent()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".".to_string());
-
-    // Replace placeholders in the allowlist pattern
-    let expanded = allowlist_pattern
-        .replace("{file}", &file_str)
-        .replace("{file_stem}", &file_stem)
-        .replace("{file_dir}", &file_dir);
+        .unwrap_or_default();
 
     // If the pattern doesn't contain a directory separator, search in the file's directory
-    if !expanded.contains('/') && !expanded.contains('\\') {
-        if file_dir.is_empty() || file_dir == "." {
-            expanded
-        } else {
-            format!("{}/{}", file_dir, expanded)
-        }
-    } else {
+    if expanded.contains('/') || expanded.contains('\\') || file_dir.is_empty() || file_dir == "." {
         expanded
+    } else {
+        format!("{}/{}", file_dir, expanded)
     }
 }
 
-/// Collect all files matching a glob pattern
-fn collect_glob_matches(pattern: &str) -> Vec<String> {
-    match glob(pattern) {
-        Ok(paths) => paths
-            .filter_map(|entry| entry.ok())
-            .filter(|p| p.is_file())
-            .map(|p| p.to_string_lossy().to_string())
-            .collect(),
-        Err(_) => Vec::new(),
-    }
+/// Collect files matching a glob pattern relative to `working_dir`, returned as
+/// paths relative to `working_dir` (sorted, so commands get a stable order)
+fn collect_glob_matches(pattern: &str, working_dir: &Path) -> Vec<String> {
+    let base = glob::Pattern::escape(&working_dir.to_string_lossy());
+    let full = format!("{}/{}", base.trim_end_matches('/'), pattern);
+    let Ok(paths) = glob(&full) else {
+        return Vec::new();
+    };
+    let mut files: Vec<String> = paths
+        .filter_map(|entry| entry.ok())
+        .filter(|p| p.is_file())
+        .filter_map(|p| {
+            p.strip_prefix(working_dir)
+                .ok()
+                .map(|rel| rel.to_string_lossy().to_string())
+        })
+        .collect();
+    files.sort();
+    files
 }
 
 /// Discover related files for a source file using multiple conventions.
@@ -387,6 +422,7 @@ pub async fn check_git_changes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::write_file;
     use std::path::PathBuf;
 
     #[test]
@@ -672,5 +708,114 @@ RESULT: {"second": 2}
                 || lower.contains("/__tests__/");
             assert!(!is_test, "Expected {} to NOT match test pattern", pattern);
         }
+    }
+
+    #[test]
+    fn shell_quote_leaves_plain_paths_and_quotes_the_rest() {
+        assert_eq!(shell_quote("src/Foo.test.ts"), "src/Foo.test.ts");
+        assert_eq!(shell_quote(""), "");
+        assert_eq!(shell_quote("my file.ts"), "'my file.ts'");
+        assert_eq!(shell_quote("Foo;rm -rf ~;.ts"), "'Foo;rm -rf ~;.ts'");
+        assert_eq!(shell_quote("it's.ts"), r"'it'\''s.ts'");
+        assert_eq!(shell_quote("$(touch x)"), "'$(touch x)'");
+    }
+
+    #[test]
+    fn expand_pattern_substitutes_without_quoting() {
+        // Allowlists are globs, not shell: a space must survive unquoted.
+        assert_eq!(
+            expand_pattern("{file_dir}/{file_stem}*", Path::new("my dir/Foo.ts")),
+            "my dir/Foo*"
+        );
+    }
+
+    #[test]
+    fn expand_command_quotes_basic_placeholders() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmd = expand_command(
+            "check {file} {file_stem} {file_dir}",
+            Path::new("my dir/Foo Bar.ts"),
+            "{file_stem}*",
+            dir.path(),
+        );
+        assert_eq!(cmd, "check 'my dir/Foo Bar.ts' 'Foo Bar' 'my dir'");
+        // A top-level file has no dir: {file_dir} expands to nothing.
+        let cmd = expand_command(
+            "ls {file_dir}",
+            Path::new("Foo.ts"),
+            "{file_stem}*",
+            dir.path(),
+        );
+        assert_eq!(cmd, "ls ");
+    }
+
+    #[test]
+    fn expand_command_finds_files_relative_to_working_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        for f in [
+            "src/Foo.ts",
+            "src/Foo.test.ts",
+            "src/Foo.extra.ts",
+            "src/Other.ts",
+        ] {
+            write_file(root, f, "x\n");
+        }
+        let file = Path::new("src/Foo.ts");
+        let expand = |p: &str| expand_command(p, file, "{file_stem}*", root);
+
+        assert_eq!(
+            expand("{all_files}"),
+            "src/Foo.extra.ts src/Foo.test.ts src/Foo.ts"
+        );
+        assert_eq!(expand("{test_files}"), "src/Foo.test.ts");
+        assert_eq!(
+            expand("{created_files}"),
+            "src/Foo.extra.ts src/Foo.test.ts"
+        );
+        // Placeholders absent from the command trigger no search.
+        assert_eq!(expand("make test"), "make test");
+    }
+
+    #[test]
+    fn expand_command_all_files_includes_source_even_if_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmd = expand_command(
+            "{all_files}|{created_files}|{test_files}",
+            Path::new("src/Gone.ts"),
+            "{file_stem}*",
+            dir.path(),
+        );
+        assert_eq!(cmd, "src/Gone.ts||");
+    }
+
+    #[test]
+    fn expand_command_quotes_hostile_discovered_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_file(root, "src/Foo.ts", "x\n");
+        write_file(root, "src/Foo;touch INJECTED;.ts", "x\n");
+        let cmd = expand_command(
+            "ls {created_files}",
+            Path::new("src/Foo.ts"),
+            "{file_stem}*",
+            root,
+        );
+        assert_eq!(cmd, "ls 'src/Foo;touch INJECTED;.ts'");
+    }
+
+    #[test]
+    fn working_dir_with_glob_metacharacters_is_matched_literally() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("proj[1]");
+        write_file(&root, "src/Foo.ts", "x\n");
+        write_file(&root, "src/Foo.test.ts", "x\n");
+        let cmd = expand_command(
+            "{test_files}",
+            Path::new("src/Foo.ts"),
+            "{file_stem}*",
+            &root,
+        );
+        assert_eq!(cmd, "src/Foo.test.ts");
     }
 }
