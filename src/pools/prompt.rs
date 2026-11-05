@@ -1,4 +1,4 @@
-use super::{auto_commit, WorkerContext};
+use super::{WorkerContext, auto_commit};
 use crate::claude::{build_prompt, require_success, run_claude};
 use crate::git::check_git_changes_filtered;
 use crate::process::{expand_pattern, parse_result};
@@ -89,20 +89,20 @@ async fn prompt_worker(
                         let _guard = ctx.git_lock.lock().await;
                         check_git_changes_filtered(&allowlist, &ctx.working_dir, &git_state).await
                     };
-                    if let Ok((_, unauthorized)) = changes {
-                        if !unauthorized.is_empty() {
-                            let unauthorized_list: Vec<_> = unauthorized
-                                .iter()
-                                .map(|p| p.display().to_string())
-                                .collect();
-                            warn!(
-                                worker = worker_id,
-                                file = %file_display,
-                                unauthorized = ?unauthorized_list,
-                                "Detected unauthorized file changes (excluding pre-existing dirty files)"
-                            );
-                            // Note: We log but don't fail - the verification step will catch issues
-                        }
+                    if let Ok((_, unauthorized)) = changes
+                        && !unauthorized.is_empty()
+                    {
+                        let unauthorized_list: Vec<_> = unauthorized
+                            .iter()
+                            .map(|p| p.display().to_string())
+                            .collect();
+                        warn!(
+                            worker = worker_id,
+                            file = %file_display,
+                            unauthorized = ?unauthorized_list,
+                            "Detected unauthorized file changes (excluding pre-existing dirty files)"
+                        );
+                        // Note: We log but don't fail - the verification step will catch issues
                     }
                 }
 

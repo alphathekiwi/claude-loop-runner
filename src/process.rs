@@ -261,11 +261,11 @@ pub fn find_related_files(source_path: &Path, working_dir: &Path) -> Vec<PathBuf
     }
 
     // 4. Mirrored __tests__: src/a/b/Foo.tsx -> src/__tests__/a/b/Foo.test.tsx
-    if let Ok(stripped) = source_path.strip_prefix("src") {
-        if let Some(rel_parent) = stripped.parent() {
-            for name in &test_names {
-                candidates.push(Path::new("src/__tests__").join(rel_parent).join(name));
-            }
+    if let Ok(stripped) = source_path.strip_prefix("src")
+        && let Some(rel_parent) = stripped.parent()
+    {
+        for name in &test_names {
+            candidates.push(Path::new("src/__tests__").join(rel_parent).join(name));
         }
     }
 
@@ -361,10 +361,10 @@ pub fn matches_allowlist(path: &Path, pattern: &str) -> bool {
     if let Some(prefix) = pattern.strip_suffix('*') {
         // Check if any component of the path starts with the prefix
         for component in path.components() {
-            if let std::path::Component::Normal(s) = component {
-                if s.to_string_lossy().starts_with(prefix) {
-                    return true;
-                }
+            if let std::path::Component::Normal(s) = component
+                && s.to_string_lossy().starts_with(prefix)
+            {
+                return true;
             }
         }
         // Also check the full path

@@ -1,12 +1,12 @@
 use crate::config::Config;
 use crate::memory::MemoryMonitor;
-use crate::pools::{spawn_prompt_pool, spawn_verify_pool, WorkerContext};
+use crate::pools::{WorkerContext, spawn_prompt_pool, spawn_verify_pool};
 use crate::process::expand_pattern;
 use crate::state::State;
 use crate::types::{FileStatus, FileTask};
 use crate::usage::{self, UsageMonitor};
 use anyhow::Result;
-use async_channel::{bounded, Sender};
+use async_channel::{Sender, bounded};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -218,10 +218,10 @@ async fn queue_files(
     let mut queued = 0;
 
     for (path, file_state) in &state.files {
-        if let Some(max) = max_files {
-            if queued >= max {
-                break;
-            }
+        if let Some(max) = max_files
+            && queued >= max
+        {
+            break;
         }
 
         match file_state.status {

@@ -1,6 +1,6 @@
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -102,14 +102,14 @@ fn summarize_usage(usage: &UsageResponse, limit_percent: f64) -> (f64, f64, Opti
         .flatten()
         .filter(|w| w.utilization >= limit_percent)
     {
-        if let Some(ref reset_str) = window.resets_at {
-            if let Ok(dt) = DateTime::parse_from_rfc3339(reset_str) {
-                let dt_utc = dt.with_timezone(&Utc);
-                match soonest_reset {
-                    None => soonest_reset = Some(dt_utc),
-                    Some(existing) if dt_utc < existing => soonest_reset = Some(dt_utc),
-                    _ => {}
-                }
+        if let Some(ref reset_str) = window.resets_at
+            && let Ok(dt) = DateTime::parse_from_rfc3339(reset_str)
+        {
+            let dt_utc = dt.with_timezone(&Utc);
+            match soonest_reset {
+                None => soonest_reset = Some(dt_utc),
+                Some(existing) if dt_utc < existing => soonest_reset = Some(dt_utc),
+                _ => {}
             }
         }
     }

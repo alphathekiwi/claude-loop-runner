@@ -1,4 +1,4 @@
-use super::{auto_commit, WorkerContext};
+use super::{WorkerContext, auto_commit};
 use crate::claude::{build_fixup_prompt, require_success, run_claude};
 use crate::process::{expand_command, parse_result, run_command};
 use crate::types::{FileStatus, FileTask};
@@ -160,12 +160,13 @@ async fn verify_worker(worker_id: usize, rx: Receiver<FileTask>, ctx: WorkerCont
                 &result.stderr
             };
 
-            let failure_msg =
-                format!(
+            let failure_msg = format!(
                 "VERIFICATION FAILED (attempt {}/{})\nCommand: {}\nExit code: {}\n\nOutput:\n{}",
                 attempts,
                 ctx.config.max_retries + 1,
-                cmd, result.exit_code, error_output
+                cmd,
+                result.exit_code,
+                error_output
             );
             append_to_failure_log(&tasks_dir, &task.path, &failure_msg);
 

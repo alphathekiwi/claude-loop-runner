@@ -426,10 +426,12 @@ mod tests {
         for absent in ["fixup_prompt", "verification_cmd", "max_files"] {
             assert!(!obj.contains_key(absent), "{absent} should be skipped");
         }
-        assert!(!obj["git"]
-            .as_object()
-            .unwrap()
-            .contains_key("commit_message_template"));
+        assert!(
+            !obj["git"]
+                .as_object()
+                .unwrap()
+                .contains_key("commit_message_template")
+        );
         // verify_concurrency has no skip attribute, so it serializes as null.
         assert_eq!(obj["verify_concurrency"], serde_json::Value::Null);
     }
