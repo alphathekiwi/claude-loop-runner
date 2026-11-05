@@ -73,7 +73,7 @@ async fn prompt_worker(
         let allowlist = expand_pattern(&ctx.config.allowlist_pattern, &task.path);
 
         // Run Claude
-        match run_claude(&prompt, &ctx.working_dir).await {
+        match run_claude(&ctx.config.claude_bin, &prompt, &ctx.working_dir).await {
             Ok(output) => {
                 // Check for unauthorized file changes (filtering out pre-existing dirty files)
                 let git_state = {
