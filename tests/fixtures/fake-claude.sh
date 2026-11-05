@@ -9,6 +9,8 @@
 #   FAKE_RESULT=<json>       print `RESULT: <json>` (default `RESULT: "done"`)
 #   FAKE_LOG=<path>          append the target file path to <path>, one line per call
 #   FAKE_STDERR=<text>       print <text> to stderr
+#   FAKE_BARRIER=<n>         drop a marker in .fake-barrier/ and wait (up to 15s) until n
+#                            calls have done so; on timeout exit 7 before later directives
 set -u
 
 prompt=""
@@ -31,6 +33,20 @@ while IFS= read -r line; do
         FAKE_RESULT=*) result="${line#FAKE_RESULT=}" ;;
         FAKE_LOG=*) echo "$target" >> "${line#FAKE_LOG=}" ;;
         FAKE_STDERR=*) echo "${line#FAKE_STDERR=}" >&2 ;;
+        FAKE_BARRIER=*)
+            want="${line#FAKE_BARRIER=}"
+            mkdir -p .fake-barrier
+            : > ".fake-barrier/$$"
+            waited=0
+            while [ "$(ls .fake-barrier | wc -l)" -lt "$want" ]; do
+                if [ "$waited" -ge 150 ]; then
+                    echo "fake-claude: barrier timed out" >&2
+                    exit 7
+                fi
+                sleep 0.1
+                waited=$((waited + 1))
+            done
+            ;;
     esac
 done <<< "$prompt"
 
