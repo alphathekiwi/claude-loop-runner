@@ -68,13 +68,11 @@ async fn main() -> Result<()> {
         } else {
             // Resume first incomplete task
             let incomplete = task_list.get_incomplete_tasks();
-            if incomplete.is_empty() {
+            let Some((task_id, entry)) = incomplete.first() else {
                 anyhow::bail!(
                     "No incomplete tasks to resume. Use --input and --prompt to start a new task."
                 );
-            }
-
-            let (task_id, entry) = incomplete.first().unwrap();
+            };
             let state_path = cli.tasks_dir.join(&entry.state_file);
             let state = State::load(&state_path)
                 .with_context(|| format!("Failed to load state for task: {}", task_id))?;
@@ -90,17 +88,14 @@ async fn main() -> Result<()> {
         let mut state = State::new(config.clone());
 
         // Create new task entry
-        let description = cli.prompt.as_ref().map(|p| {
-            if p.len() > 50 {
-                format!("{}...", &p[..47])
-            } else {
-                p.clone()
-            }
-        });
+        let description = cli.prompt.as_deref().map(truncate_description);
         let task_id = task_list.create_task(working_dir.clone(), description);
-        let state_path = cli
-            .tasks_dir
-            .join(task_list.get_task(&task_id).unwrap().state_file.clone());
+        let state_path = cli.tasks_dir.join(
+            &task_list
+                .get_task(&task_id)
+                .context("Newly created task missing from task list")?
+                .state_file,
+        );
 
         // Merge input file
         if let Some(ref input) = cli.input {
@@ -216,16 +211,8 @@ async fn main() -> Result<()> {
                             name: new_name,
                             email: new_email,
                         }) => {
-                            let final_name = if missing_name {
-                                &new_name
-                            } else {
-                                name.as_ref().unwrap()
-                            };
-                            let final_email = if missing_email {
-                                &new_email
-                            } else {
-                                email.as_ref().unwrap()
-                            };
+                            let final_name = name.as_ref().unwrap_or(&new_name);
+                            let final_email = email.as_ref().unwrap_or(&new_email);
                             if let Err(e) =
                                 git::set_git_identity(&working_dir, final_name, final_email).await
                             {
@@ -365,6 +352,16 @@ async fn main() -> Result<()> {
     result
 }
 
+/// Shorten a prompt for the task list, cutting on a char boundary so
+/// multi-byte characters can't panic the slice.
+fn truncate_description(prompt: &str) -> String {
+    if prompt.chars().count() > 50 {
+        format!("{}...", prompt.chars().take(47).collect::<String>())
+    } else {
+        prompt.to_string()
+    }
+}
+
 /// Build a tmux session name from the working directory and task ID.
 ///
 /// Takes first letter of each path component (lowercased) except the last,
@@ -394,19 +391,46 @@ fn build_tmux_session_name(working_dir: &std::path::Path, task_id: &str) -> Stri
 
     let task_num = task_id.strip_prefix("task_").unwrap_or(task_id);
 
-    if parts.is_empty() {
+    let Some((last, rest)) = parts.split_last() else {
         return format!("clr_{}", task_num);
-    }
-
-    let last = parts.last().unwrap();
-    let prefixes: Vec<&str> = parts[..parts.len() - 1]
-        .iter()
-        .filter_map(|p| p.get(..1))
-        .collect();
+    };
+    let prefixes: Vec<&str> = rest.iter().filter_map(|p| p.get(..1)).collect();
 
     if prefixes.is_empty() {
         format!("{}_{}", last, task_num)
     } else {
         format!("{}-{}_{}", prefixes.join("-"), last, task_num)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn truncate_description_keeps_short_prompts() {
+        assert_eq!(truncate_description("Add tests"), "Add tests");
+    }
+
+    #[test]
+    fn truncate_description_cuts_on_char_boundary() {
+        let prompt = format!("{}—{}", "x".repeat(46), "y".repeat(10));
+        let truncated = truncate_description(&prompt);
+        assert_eq!(truncated, format!("{}—...", "x".repeat(46)));
+    }
+
+    #[test]
+    fn tmux_session_name_abbreviates_path() {
+        let name = build_tmux_session_name(
+            Path::new("/Users/someone/Documents/personal/claude-loop-runner"),
+            "task_3",
+        );
+        assert_eq!(name, "d-p-claude-loop-runner_3");
+    }
+
+    #[test]
+    fn tmux_session_name_falls_back_for_root() {
+        assert_eq!(build_tmux_session_name(Path::new("/"), "task_7"), "clr_7");
     }
 }
