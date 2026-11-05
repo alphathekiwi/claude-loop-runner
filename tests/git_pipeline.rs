@@ -476,3 +476,45 @@ fn working_dir_flag_sets_where_claude_runs() {
     let contents = std::fs::read_to_string(repo.path().join("src/Foo.ts")).unwrap();
     assert!(contents.contains("edited by fake-claude"));
 }
+
+#[test]
+fn enabling_git_on_resume_builds_the_allowlist_then_commits() {
+    // Created without git, so no allowlist was saved; the runner must build it on resume.
+    let repo = repo_with_files(&["src/Foo.ts", "src/Foo.test.ts"]);
+    let input = write_input(repo.path(), &["src/Foo.ts"]);
+    git(repo.path(), &["add", "input.json"]);
+    git(repo.path(), &["commit", "-q", "-m", "add input"]);
+    run_ok(
+        repo.path(),
+        &[
+            "--input",
+            input,
+            "--prompt",
+            "FAKE_APPEND_TARGET",
+            "--dry-run",
+            "--tasks-dir",
+            TASKS,
+        ],
+    );
+    let state = task_state(repo.path(), TASKS, "task_0");
+    assert_eq!(
+        state["git_state"]["global_allowlist_patterns"],
+        serde_json::json!([])
+    );
+
+    run_ok(
+        repo.path(),
+        &["--resume", "task_0", "--git-commit", "--tasks-dir", TASKS],
+    );
+
+    let state = task_state(repo.path(), TASKS, "task_0");
+    assert_eq!(
+        state["git_state"]["global_allowlist_patterns"],
+        serde_json::json!(["Foo*"])
+    );
+    assert_eq!(file_state(&state, "src/Foo.ts")["status"], "completed");
+    assert_eq!(
+        git(repo.path(), &["log", "-1", "--format=%s"]),
+        "claude-loop: Foo.ts"
+    );
+}
