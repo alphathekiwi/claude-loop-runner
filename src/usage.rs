@@ -206,6 +206,23 @@ impl UsageMonitor {
         limit_percent: f64,
         check_interval: Duration,
     ) -> tokio::task::JoinHandle<()> {
+        self.spawn_monitor_with(limit_percent, check_interval, move || {
+            fetch_usage(limit_percent)
+        })
+    }
+
+    /// [`spawn_monitor`](Self::spawn_monitor) with the usage source injected, so the
+    /// loop can be driven by scripted readings in tests.
+    fn spawn_monitor_with<F, Fut>(
+        &self,
+        limit_percent: f64,
+        check_interval: Duration,
+        fetch: F,
+    ) -> tokio::task::JoinHandle<()>
+    where
+        F: Fn() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = anyhow::Result<(f64, f64, Option<DateTime<Utc>>)>> + Send,
+    {
         let paused = Arc::clone(&self.paused);
         let resume_notify = Arc::clone(&self.resume_notify);
 
@@ -214,7 +231,7 @@ impl UsageMonitor {
             let mut burning_remaining = false;
 
             loop {
-                match fetch_usage(limit_percent).await {
+                match fetch().await {
                     Ok((five_hr, seven_day, soonest_reset)) => {
                         let currently_paused = paused.load(Ordering::SeqCst);
                         let action = decide_usage_action(
@@ -624,5 +641,109 @@ mod tests {
         let handle = noop_handle();
         assert!(!handle.is_paused());
         handle.wait_if_paused().await;
+    }
+
+    /// One scripted usage reading: utilizations and the reset time, in seconds from
+    /// "now" (wall clock at fetch time). `None` makes the fetch fail.
+    type Reading = Option<(f64, f64, Option<i64>)>;
+
+    /// Spawn the real monitor loop over scripted readings; once they run out every
+    /// fetch fails, which the loop treats as "no change".
+    fn monitor_with(readings: Vec<Reading>) -> (UsageMonitor, UsageHandle) {
+        let monitor = UsageMonitor::new();
+        let handle = monitor.handle();
+        let queue = Arc::new(std::sync::Mutex::new(
+            readings
+                .into_iter()
+                .collect::<std::collections::VecDeque<_>>(),
+        ));
+        monitor.spawn_monitor_with(95.0, Duration::from_secs(60), move || {
+            let next = queue.lock().unwrap().pop_front().flatten();
+            async move {
+                let (five, seven, reset) =
+                    next.ok_or_else(|| anyhow::anyhow!("scripted fetch failure"))?;
+                let reset = reset.map(|secs| Utc::now() + chrono::TimeDelta::seconds(secs));
+                Ok((five, seven, reset))
+            }
+        });
+        (monitor, handle)
+    }
+
+    async fn after(secs: u64) {
+        tokio::time::sleep(Duration::from_secs(secs)).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_pauses_wakes_early_to_burn_then_pauses_again_after_reset() {
+        let (_monitor, handle) = monitor_with(vec![
+            Some((96.0, 0.0, Some(2 * 3600))), // over soft limit, reset in 2h
+            Some((10.0, 0.0, None)),           // window has reset
+            Some((96.0, 0.0, Some(2 * 3600))), // over again in the new window
+        ]);
+
+        after(1).await;
+        assert!(handle.is_paused(), "should pause over the soft limit");
+
+        // Sleeps until 30 minutes before the reset, then resumes to burn what's left.
+        let waiter = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.wait_if_paused().await }
+        });
+        after(2 * 3600 - 30 * 60).await;
+        assert!(
+            waiter.is_finished(),
+            "workers should wake for the burn window"
+        );
+        assert!(!handle.is_paused());
+
+        // The next reading is under the limit; the one after breaches again and must pause.
+        after(60 + 1).await;
+        assert!(handle.is_paused(), "breach after a reset was ignored");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_burns_immediately_inside_the_early_wake_window() {
+        let (_monitor, handle) = monitor_with(vec![
+            Some((96.0, 0.0, Some(10 * 60))), // reset in 10 minutes
+            Some((99.0, 0.0, Some(9 * 60))),  // still over while burning: no change
+        ]);
+        after(1).await;
+        assert!(!handle.is_paused());
+        after(60).await;
+        assert!(!handle.is_paused());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_sleeps_through_a_fully_expended_window() {
+        let (_monitor, handle) = monitor_with(vec![
+            Some((100.0, 50.0, Some(3600))), // used up, resets in 1h
+            Some((0.0, 50.0, None)),         // after the reset
+        ]);
+        after(1).await;
+        assert!(handle.is_paused());
+        // Still asleep just before reset + 60s buffer...
+        after(3600 + 60 - 2).await;
+        assert!(handle.is_paused());
+        // ...and resumed once the post-reset reading comes in.
+        after(2).await;
+        assert!(!handle.is_paused());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_rides_out_fetch_errors_and_pauses_without_a_reset_time() {
+        let (_monitor, handle) = monitor_with(vec![
+            None,                    // fetch error: nothing changes
+            Some((97.0, 0.0, None)), // over with no reset time: plain pause
+            Some((97.0, 0.0, None)), // still over: stays paused
+            Some((50.0, 0.0, None)), // back under: resume
+        ]);
+        after(1).await;
+        assert!(!handle.is_paused());
+        after(60).await;
+        assert!(handle.is_paused());
+        after(60).await;
+        assert!(handle.is_paused());
+        after(60).await;
+        assert!(!handle.is_paused());
     }
 }
