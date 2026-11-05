@@ -130,3 +130,161 @@ impl Cli {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(std::iter::once("claude-loop-runner").chain(args.iter().copied()))
+            .expect("args should parse")
+    }
+
+    #[test]
+    fn defaults() {
+        let cli = parse(&[]);
+        assert_eq!(cli.input, None);
+        assert_eq!(cli.prompt, None);
+        assert_eq!(cli.fixup, None);
+        assert_eq!(cli.verify, None);
+        assert_eq!(cli.concurrency, 5);
+        assert_eq!(cli.verify_concurrency, None);
+        assert_eq!(cli.max_files, None);
+        assert_eq!(cli.allowlist, "{file_stem}*");
+        assert_eq!(cli.tasks_dir, PathBuf::from("./claude-loop-tasks"));
+        assert_eq!(cli.resume, None);
+        assert_eq!(cli.max_retries, 3);
+        assert_eq!(cli.working_dir, None);
+        assert!(!cli.dry_run && !cli.git && !cli.git_branch && !cli.git_commit);
+        assert!(!cli.no_git && !cli.no_tmux);
+        assert_eq!(cli.git_commit_message, None);
+        assert_eq!(cli.claude_bin, "claude");
+        assert_eq!(cli.limit, 95.0);
+        assert!(!cli.is_resume());
+        assert_eq!(cli.resume_task_id(), None);
+    }
+
+    #[test]
+    fn short_and_long_flags() {
+        let cli = parse(&[
+            "-i",
+            "in.json",
+            "-p",
+            "do it",
+            "-f",
+            "fix it",
+            "-v",
+            "make test {file}",
+            "-c",
+            "8",
+            "-m",
+            "10",
+            "-a",
+            "*.rs",
+            "-d",
+            "/tmp/tasks",
+            "-w",
+            "/work",
+            "--verify-concurrency",
+            "2",
+            "--max-retries",
+            "0",
+            "--dry-run",
+            "--no-tmux",
+            "--claude-bin",
+            "/opt/fake-claude",
+            "--limit",
+            "50.5",
+            "--git-commit-message",
+            "chore: {file}",
+        ]);
+        assert_eq!(cli.input, Some(PathBuf::from("in.json")));
+        assert_eq!(cli.prompt.as_deref(), Some("do it"));
+        assert_eq!(cli.fixup.as_deref(), Some("fix it"));
+        assert_eq!(cli.verify.as_deref(), Some("make test {file}"));
+        assert_eq!(cli.concurrency, 8);
+        assert_eq!(cli.max_files, Some(10));
+        assert_eq!(cli.allowlist, "*.rs");
+        assert_eq!(cli.tasks_dir, PathBuf::from("/tmp/tasks"));
+        assert_eq!(cli.working_dir, Some(PathBuf::from("/work")));
+        assert_eq!(cli.verify_concurrency, Some(2));
+        assert_eq!(cli.max_retries, 0);
+        assert!(cli.dry_run && cli.no_tmux);
+        assert_eq!(cli.claude_bin, "/opt/fake-claude");
+        assert_eq!(cli.limit, 50.5);
+        assert_eq!(cli.git_commit_message.as_deref(), Some("chore: {file}"));
+    }
+
+    #[test]
+    fn resume_without_value_resumes_all() {
+        let cli = parse(&["--resume"]);
+        assert!(cli.is_resume());
+        assert_eq!(cli.resume, Some(None));
+        assert_eq!(cli.resume_task_id(), None);
+    }
+
+    #[test]
+    fn resume_with_value_targets_task() {
+        for args in [&["--resume", "task-123"][..], &["--resume=task-123"][..]] {
+            let cli = parse(args);
+            assert!(cli.is_resume());
+            assert_eq!(cli.resume_task_id(), Some("task-123"));
+        }
+    }
+
+    #[test]
+    fn resume_followed_by_flag_does_not_swallow_it() {
+        let cli = parse(&["--resume", "--dry-run"]);
+        assert_eq!(cli.resume_task_id(), None);
+        assert!(cli.dry_run);
+    }
+
+    #[test]
+    fn invalid_values_are_rejected() {
+        let bad: &[&[&str]] = &[
+            &["-c", "many"],
+            &["-c", "-1"],
+            &["--max-retries", "-1"],
+            &["--limit", "lots"],
+            &["--unknown-flag"],
+            &["-i"],
+        ];
+        for args in bad {
+            let full = std::iter::once("claude-loop-runner").chain(args.iter().copied());
+            assert!(Cli::try_parse_from(full).is_err(), "{args:?} should fail");
+        }
+    }
+
+    #[test]
+    fn git_features_requested() {
+        assert!(!parse(&[]).git_features_requested());
+        assert!(parse(&["--git"]).git_features_requested());
+        assert!(parse(&["--git-branch"]).git_features_requested());
+        assert!(parse(&["--git-commit"]).git_features_requested());
+        // A commit message alone does not request git.
+        assert!(!parse(&["--git-commit-message", "m"]).git_features_requested());
+        // --no-git overrides everything.
+        assert!(
+            !parse(&["--no-git", "--git", "--git-branch", "--git-commit"]).git_features_requested()
+        );
+        assert!(!parse(&["--no-git"]).git_features_requested());
+    }
+
+    #[test]
+    fn validate_requires_input_and_prompt_unless_resuming() {
+        let err = parse(&["-p", "x"]).validate().unwrap_err().to_string();
+        assert!(err.contains("--input"), "{err}");
+        let err = parse(&["-i", "in.json"])
+            .validate()
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--prompt"), "{err}");
+        // Input is checked first when both are missing.
+        let err = parse(&[]).validate().unwrap_err().to_string();
+        assert!(err.contains("--input"), "{err}");
+
+        parse(&["-i", "in.json", "-p", "x"]).validate().unwrap();
+        parse(&["--resume"]).validate().unwrap();
+        parse(&["--resume", "abc"]).validate().unwrap();
+    }
+}
