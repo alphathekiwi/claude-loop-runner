@@ -324,6 +324,7 @@ async fn main() -> Result<()> {
         state,
         state_path.clone(),
         cli.tasks_dir.clone(),
+        working_dir.clone(),
         shutdown_rx,
         if cli.limit > 0.0 {
             Some(cli.limit)

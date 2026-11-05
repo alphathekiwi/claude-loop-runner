@@ -97,6 +97,19 @@ pub async fn run_claude(
     })
 }
 
+/// Treat a non-zero Claude exit as an error, so a crashed run is never marked done
+pub fn require_success(output: ProcessOutput) -> Result<ProcessOutput> {
+    if output.exit_code == 0 {
+        return Ok(output);
+    }
+    let detail = if output.stderr.trim().is_empty() {
+        output.stdout.trim()
+    } else {
+        output.stderr.trim()
+    };
+    anyhow::bail!("claude exited with code {}: {}", output.exit_code, detail)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,6 +183,27 @@ mod tests {
 
         assert_eq!(output.exit_code, 3);
         assert!(output.stderr.contains("boom"));
+    }
+
+    #[test]
+    fn require_success_passes_zero_exit_through() {
+        let output = ProcessOutput {
+            stdout: "ok".into(),
+            stderr: String::new(),
+            exit_code: 0,
+        };
+        assert_eq!(require_success(output).unwrap().stdout, "ok");
+    }
+
+    #[test]
+    fn require_success_rejects_non_zero_exit_with_stderr() {
+        let output = ProcessOutput {
+            stdout: "partial".into(),
+            stderr: "boom\n".into(),
+            exit_code: 2,
+        };
+        let err = require_success(output).unwrap_err().to_string();
+        assert_eq!(err, "claude exited with code 2: boom");
     }
 
     #[tokio::test]

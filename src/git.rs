@@ -409,10 +409,17 @@ pub async fn stage_files(working_dir: &Path, files: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-/// Commit staged changes with a message
-pub async fn commit(working_dir: &Path, message: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["commit", "-m", message])
+/// Commit changes with a message.
+///
+/// With `paths`, only those paths are committed (`git commit -- <paths>`), so
+/// anything else in the index is left staged. With no paths, commits the index.
+pub async fn commit(working_dir: &Path, message: &str, paths: &[PathBuf]) -> Result<String> {
+    let mut cmd = Command::new("git");
+    cmd.args(["commit", "-m", message]);
+    if !paths.is_empty() {
+        cmd.arg("--").args(paths);
+    }
+    let output = cmd
         .current_dir(working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -421,9 +428,10 @@ pub async fn commit(working_dir: &Path, message: &str) -> Result<String> {
         .context("Failed to commit")?;
 
     if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        // "nothing to commit" is not an error for our purposes
-        if stderr.contains("nothing to commit") {
+        // "nothing to commit" is not an error for our purposes (git prints it on stdout)
+        if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
             debug!("Nothing to commit");
             return Ok(String::new());
         }
@@ -446,11 +454,14 @@ pub async fn commit(working_dir: &Path, message: &str) -> Result<String> {
     Ok(commit_hash)
 }
 
-/// Stage and commit changes for a specific file
+/// Stage and commit changes for a specific file.
+///
+/// Dirty paths for which `skip` returns true are never staged or committed.
 pub async fn commit_file_changes(
     working_dir: &Path,
     file_path: &Path,
     task_description: Option<&str>,
+    skip: impl Fn(&Path) -> bool,
 ) -> Result<Option<String>> {
     // Get files that changed (related to this file path)
     let dirty_files = get_dirty_files(working_dir).await?;
@@ -462,7 +473,7 @@ pub async fn commit_file_changes(
         .into_iter()
         .filter(|p| {
             let p_str = p.to_string_lossy();
-            p_str.contains(&file_stem) || p == file_path
+            (p_str.contains(&file_stem) || p == file_path) && !skip(p)
         })
         .collect();
 
@@ -486,7 +497,7 @@ pub async fn commit_file_changes(
         format!("claude-loop: {}", file_name)
     };
 
-    let commit_hash = commit(working_dir, &message).await?;
+    let commit_hash = commit(working_dir, &message, &related_files).await?;
 
     if commit_hash.is_empty() {
         Ok(None)
@@ -884,7 +895,7 @@ mod tests {
         stage_files(root, &[PathBuf::from("a.txt")]).await.unwrap();
         assert_eq!(git(root, &["diff", "--cached", "--name-only"]), "a.txt");
 
-        let hash = commit(root, "add a").await.unwrap();
+        let hash = commit(root, "add a", &[]).await.unwrap();
         assert_eq!(hash, git(root, &["rev-parse", "--short", "HEAD"]));
         assert_eq!(git(root, &["log", "-1", "--format=%s"]), "add a");
         // b.txt was not staged so it is still untracked.
@@ -903,14 +914,13 @@ mod tests {
     #[tokio::test]
     async fn commit_fails_outside_repo() {
         let plain = tempfile::tempdir().unwrap();
-        assert!(commit(plain.path(), "msg").await.is_err());
+        assert!(commit(plain.path(), "msg", &[]).await.is_err());
     }
 
     #[tokio::test]
-    #[ignore = "bug: git prints 'nothing to commit' on stdout, but commit() only checks stderr"]
     async fn commit_with_nothing_staged_returns_empty_hash() {
         let repo = temp_git_repo();
-        assert_eq!(commit(repo.path(), "noop").await.unwrap(), "");
+        assert_eq!(commit(repo.path(), "noop", &[]).await.unwrap(), "");
     }
 
     #[tokio::test]
@@ -921,7 +931,7 @@ mod tests {
         write_file(root, "src/widget.test.rs", "#[test] fn t() {}\n");
         write_file(root, "src/other.rs", "fn o() {}\n");
 
-        let hash = commit_file_changes(root, Path::new("src/widget.rs"), None)
+        let hash = commit_file_changes(root, Path::new("src/widget.rs"), None, |_| false)
             .await
             .unwrap()
             .expect("expected a commit");
@@ -938,7 +948,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "bug: commit() runs `git commit -m`, so anything already staged is swept into the per-file commit"]
     async fn commit_file_changes_leaves_unrelated_staged_files_out() {
         let repo = temp_git_repo();
         let root = repo.path();
@@ -946,7 +955,7 @@ mod tests {
         git(root, &["add", "staged_by_user.txt"]);
         write_file(root, "src/widget.rs", "w\n");
 
-        commit_file_changes(root, Path::new("src/widget.rs"), None)
+        commit_file_changes(root, Path::new("src/widget.rs"), None, |_| false)
             .await
             .unwrap()
             .expect("expected a commit");
@@ -961,10 +970,12 @@ mod tests {
         let repo = temp_git_repo();
         let root = repo.path();
         write_file(root, "lib/thing.ts", "export {};\n");
-        commit_file_changes(root, Path::new("lib/thing.ts"), Some("add tests"))
-            .await
-            .unwrap()
-            .expect("expected a commit");
+        commit_file_changes(root, Path::new("lib/thing.ts"), Some("add tests"), |_| {
+            false
+        })
+        .await
+        .unwrap()
+        .expect("expected a commit");
         assert_eq!(
             git(root, &["log", "-1", "--format=%s"]),
             "claude-loop: thing.ts (add tests)"
@@ -976,16 +987,20 @@ mod tests {
         let repo = temp_git_repo();
         let root = repo.path();
         let head = git(root, &["rev-parse", "HEAD"]);
-        assert!(commit_file_changes(root, Path::new("src/widget.rs"), None)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            commit_file_changes(root, Path::new("src/widget.rs"), None, |_| false)
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         write_file(root, "src/unrelated.rs", "x\n");
-        assert!(commit_file_changes(root, Path::new("src/widget.rs"), None)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            commit_file_changes(root, Path::new("src/widget.rs"), None, |_| false)
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(git(root, &["rev-parse", "HEAD"]), head);
     }
 

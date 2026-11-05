@@ -235,33 +235,6 @@ fn without_verify_files_complete_with_raw_result_captured() {
 }
 
 #[test]
-fn claude_exit_code_is_not_treated_as_failure_today() {
-    // Documents current behaviour: the prompt pool ignores claude's exit status,
-    // so a crashed claude still counts as a completed prompt.
-    let repo = repo_with_files(&["src/Foo.ts"]);
-    let input = write_input(repo.path(), &["src/Foo.ts"]);
-
-    run_ok(
-        repo.path(),
-        &[
-            "--input",
-            input,
-            "--prompt",
-            "FAKE_EXIT=1\nFAKE_STDERR=claude crashed\nFAKE_RESULT={\"partial\": true}",
-            "--no-git",
-            "--tasks-dir",
-            TASKS,
-        ],
-    );
-
-    let state = task_state(repo.path(), TASKS, "task_0");
-    let fs = file_state(&state, "src/Foo.ts");
-    assert_eq!(fs["status"], "completed");
-    assert_eq!(fs["result_data"], json!({ "partial": true }));
-}
-
-#[test]
-#[ignore = "bug: prompt.rs:77 ignores output.exit_code, so a non-zero claude exit is marked completed"]
 fn claude_non_zero_exit_marks_file_failed() {
     let repo = repo_with_files(&["src/Foo.ts"]);
     let input = write_input(repo.path(), &["src/Foo.ts"]);
@@ -278,7 +251,15 @@ fn claude_non_zero_exit_marks_file_failed() {
         ],
     );
     let state = task_state(repo.path(), TASKS, "task_0");
-    assert_eq!(file_state(&state, "src/Foo.ts")["status"], "failed");
+    let fs = file_state(&state, "src/Foo.ts");
+    assert_eq!(fs["status"], "failed");
+    assert!(
+        fs["last_error"]
+            .as_str()
+            .unwrap()
+            .contains("claude crashed"),
+        "{fs}"
+    );
 }
 
 #[test]

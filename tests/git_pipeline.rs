@@ -227,7 +227,6 @@ fn pre_existing_dirty_files_are_not_flagged_as_unauthorized() {
 }
 
 #[test]
-#[ignore = "bug: git.rs:465 commits every dirty path containing the file stem, sweeping in the runner's own failures/<file>.log"]
 fn auto_commit_after_fixup_does_not_commit_the_failure_log() {
     let repo = repo_with_files(&["src/Foo.ts"]);
     let input = write_input(repo.path(), &["src/Foo.ts"]);
@@ -258,7 +257,6 @@ fn auto_commit_after_fixup_does_not_commit_the_failure_log() {
 }
 
 #[test]
-#[ignore = "bug: git.rs:465 commit_file_changes ignores pre_existing_dirty_files, so the user's uncommitted edits to a related file are committed"]
 fn auto_commit_leaves_pre_existing_edits_to_related_files_alone() {
     let repo = repo_with_files(&["src/Foo.ts", "src/Foo.test.ts"]);
     let input = write_input(repo.path(), &["src/Foo.ts"]);
@@ -289,7 +287,6 @@ fn auto_commit_leaves_pre_existing_edits_to_related_files_alone() {
 }
 
 #[test]
-#[ignore = "bug: prompt.rs:116 marks the file completed without committing when there is no --verify, so --git-commit never commits"]
 fn git_commit_without_verify_still_commits() {
     let repo = repo_with_files(&["src/Foo.ts"]);
     let input = write_input(repo.path(), &["src/Foo.ts"]);
@@ -316,7 +313,6 @@ fn git_commit_without_verify_still_commits() {
 }
 
 #[test]
-#[ignore = "bug: verify.rs:149 auto-commits from parallel verify workers without a lock; git.rs:415 `git commit` takes the whole index, so one file's commit sweeps in another's staged changes and the other fails on index.lock"]
 fn parallel_verify_workers_commit_each_file_separately() {
     let files = ["src/Foo.ts", "src/Bar.ts"];
     let repo = repo_with_files(&files);
@@ -455,7 +451,6 @@ fn git_outside_a_repository_runs_without_git() {
 }
 
 #[test]
-#[ignore = "bug: runner.rs:29 uses the process cwd, not --working-dir, so claude runs in the wrong directory"]
 fn working_dir_flag_sets_where_claude_runs() {
     let repo = repo_with_files(&["src/Foo.ts"]);
     let input = write_input(repo.path(), &["src/Foo.ts"]);

@@ -1,5 +1,5 @@
-use super::WorkerContext;
-use crate::claude::{build_prompt, run_claude};
+use super::{auto_commit, WorkerContext};
+use crate::claude::{build_prompt, require_success, run_claude};
 use crate::git::check_git_changes_filtered;
 use crate::process::{expand_pattern, parse_result};
 use crate::types::{FileStatus, FileTask};
@@ -73,7 +73,10 @@ async fn prompt_worker(
         let allowlist = expand_pattern(&ctx.config.allowlist_pattern, &task.path);
 
         // Run Claude
-        match run_claude(&ctx.config.claude_bin, &prompt, &ctx.working_dir).await {
+        let outcome = run_claude(&ctx.config.claude_bin, &prompt, &ctx.working_dir)
+            .await
+            .and_then(require_success);
+        match outcome {
             Ok(output) => {
                 // Check for unauthorized file changes (filtering out pre-existing dirty files)
                 let git_state = {
@@ -82,9 +85,11 @@ async fn prompt_worker(
                 };
 
                 if git_state.enabled {
-                    if let Ok((_, unauthorized)) =
+                    let changes = {
+                        let _guard = ctx.git_lock.lock().await;
                         check_git_changes_filtered(&allowlist, &ctx.working_dir, &git_state).await
-                    {
+                    };
+                    if let Ok((_, unauthorized)) = changes {
                         if !unauthorized.is_empty() {
                             let unauthorized_list: Vec<_> = unauthorized
                                 .iter()
@@ -103,6 +108,11 @@ async fn prompt_worker(
 
                 // Parse result from output
                 let result = parse_result(&output.stdout);
+
+                // Without verification there is no later step to commit from
+                if ctx.config.verification_cmd.is_none() {
+                    auto_commit(&ctx, worker_id, &task).await;
+                }
 
                 // Update state with result
                 let (prompt_done, total_files) = {

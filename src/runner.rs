@@ -19,14 +19,12 @@ pub async fn run(
     state: State,
     state_path: PathBuf,
     tasks_dir: PathBuf,
+    working_dir: PathBuf,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     usage_limit: Option<f64>,
 ) -> Result<()> {
     let config = Arc::new(config);
     let state = Arc::new(Mutex::new(state));
-
-    // Get current working directory for ACP server
-    let working_dir = std::env::current_dir()?;
 
     // Create memory monitor with hysteresis (85% high, 70% low)
     let memory_monitor = MemoryMonitor::new();
@@ -53,6 +51,7 @@ pub async fn run(
         config.max_files,
         &config.allowlist_pattern,
         &state_path,
+        &working_dir,
     )
     .await?;
 
@@ -80,8 +79,10 @@ pub async fn run(
         state_path: state_path.clone(),
         config: Arc::clone(&config),
         working_dir: working_dir.clone(),
+        tasks_dir,
         memory: memory_handle,
         usage: usage_handle,
+        git_lock: Arc::new(Mutex::new(())),
     };
 
     let prompt_handles = spawn_prompt_pool(
@@ -91,7 +92,7 @@ pub async fn run(
         ctx.clone(),
     );
 
-    let verify_handles = spawn_verify_pool(verify_concurrency, verify_rx.clone(), ctx, tasks_dir);
+    let verify_handles = spawn_verify_pool(verify_concurrency, verify_rx.clone(), ctx);
 
     // Now queue files — workers are already consuming
     queue_files(&state, &prompt_tx, &verify_tx, config.max_files).await?;
@@ -141,6 +142,7 @@ async fn build_allowlist(
     max_files: Option<usize>,
     allowlist_pattern: &str,
     state_path: &Path,
+    working_dir: &Path,
 ) -> Result<usize> {
     let mut state = state.lock().await;
 
@@ -165,14 +167,13 @@ async fn build_allowlist(
     // Build global allowlist (skip if already built)
     if state.git_state.enabled {
         if state.git_state.global_allowlist_patterns.is_empty() {
-            let working_dir = std::env::current_dir().unwrap_or_default();
             for path in &files_to_process {
                 let pattern = expand_pattern(allowlist_pattern, path);
                 state.git_state.add_allowlist_pattern(pattern.clone());
                 debug!(pattern = %pattern, "Added to global allowlist");
 
                 // Discover related test/snapshot files and add their patterns
-                for related in crate::process::find_related_files(path, &working_dir) {
+                for related in crate::process::find_related_files(path, working_dir) {
                     let related_pattern = expand_pattern(allowlist_pattern, &related);
                     state.git_state.add_allowlist_pattern(related_pattern);
                 }
