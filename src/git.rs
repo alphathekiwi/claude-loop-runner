@@ -63,16 +63,6 @@ impl GitState {
         self.pre_existing_dirty_files.contains(path)
     }
 
-    /// Get files that are newly modified (not pre-existing dirty)
-    #[allow(dead_code)]
-    pub fn filter_new_changes(&self, changed_files: &[PathBuf]) -> Vec<PathBuf> {
-        changed_files
-            .iter()
-            .filter(|p| !self.pre_existing_dirty_files.contains(*p))
-            .cloned()
-            .collect()
-    }
-
     /// Add an allowlist pattern for a file being processed
     pub fn add_allowlist_pattern(&mut self, pattern: String) {
         if !self.global_allowlist_patterns.contains(&pattern) {
@@ -354,30 +344,6 @@ pub async fn create_task_branch(working_dir: &Path, task_id: &str) -> Result<Str
     Ok(branch_name)
 }
 
-/// Checkout an existing branch
-#[allow(dead_code)]
-pub async fn checkout_branch(working_dir: &Path, branch: &str) -> Result<()> {
-    let output = Command::new("git")
-        .args(["checkout", branch])
-        .current_dir(working_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .context("Failed to checkout branch")?;
-
-    if !output.status.success() {
-        anyhow::bail!(
-            "Failed to checkout branch '{}': {}",
-            branch,
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    info!(branch = %branch, "Checked out branch");
-    Ok(())
-}
-
 /// Stage specific files for commit
 pub async fn stage_files(working_dir: &Path, files: &[PathBuf]) -> Result<()> {
     if files.is_empty() {
@@ -504,51 +470,6 @@ pub async fn commit_file_changes(
     }
 }
 
-/// Get the diff for staged files
-#[allow(dead_code)]
-pub async fn get_staged_diff(working_dir: &Path) -> Result<String> {
-    let output = Command::new("git")
-        .args(["diff", "--cached"])
-        .current_dir(working_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .context("Failed to get staged diff")?;
-
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-/// Get the diff for a specific file (unstaged changes)
-#[allow(dead_code)]
-pub async fn get_file_diff(working_dir: &Path, file_path: &Path) -> Result<String> {
-    let output = Command::new("git")
-        .args(["diff", "--"])
-        .arg(file_path)
-        .current_dir(working_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .context("Failed to get file diff")?;
-
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-/// Check if there are any uncommitted changes
-#[allow(dead_code)]
-pub async fn has_uncommitted_changes(working_dir: &Path) -> Result<bool> {
-    let output = Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(working_dir)
-        .stdout(Stdio::piped())
-        .output()
-        .await
-        .context("Failed to check for uncommitted changes")?;
-
-    Ok(!output.stdout.is_empty())
-}
-
 /// Check git changes against allowlist, filtering out pre-existing dirty files
 /// and files that match any task's global allowlist (for parallel worker support)
 pub async fn check_git_changes_filtered(
@@ -585,24 +506,6 @@ pub async fn check_git_changes_filtered(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_git_state_filter_new_changes() {
-        let mut git_state = GitState::default();
-        git_state
-            .pre_existing_dirty_files
-            .insert(PathBuf::from("already_dirty.txt"));
-        git_state.enabled = true;
-
-        let changed = vec![
-            PathBuf::from("already_dirty.txt"),
-            PathBuf::from("new_change.txt"),
-        ];
-
-        let new_only = git_state.filter_new_changes(&changed);
-        assert_eq!(new_only.len(), 1);
-        assert_eq!(new_only[0], PathBuf::from("new_change.txt"));
-    }
 
     #[test]
     fn test_was_pre_existing_dirty() {
@@ -807,7 +710,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_task_branch_and_checkout_branch() {
+    async fn create_task_branch_creates_and_checks_out_a_timestamped_branch() {
         let repo = temp_git_repo();
         let root = repo.path();
         let branch = create_task_branch(root, "task1").await.unwrap();
@@ -817,14 +720,12 @@ mod tests {
         assert_eq!(suffix.len(), 15);
         assert_eq!(get_current_branch(root).await.unwrap(), branch);
 
-        checkout_branch(root, "main").await.unwrap();
+        git(root, &["checkout", "-q", "main"]);
         assert_eq!(get_current_branch(root).await.unwrap(), "main");
 
         // An invalid ref name is rejected.
         let err = create_task_branch(root, "bad..name").await.unwrap_err();
         assert!(err.to_string().contains("Failed to create branch"), "{err}");
-        let err = checkout_branch(root, "does-not-exist").await.unwrap_err();
-        assert!(err.to_string().contains("does-not-exist"), "{err}");
     }
 
     #[tokio::test]
@@ -945,40 +846,6 @@ mod tests {
                 .is_none()
         );
         assert_eq!(git(root, &["rev-parse", "HEAD"]), head);
-    }
-
-    #[tokio::test]
-    async fn diffs_and_uncommitted_changes() {
-        let repo = temp_git_repo();
-        let root = repo.path();
-        assert!(!has_uncommitted_changes(root).await.unwrap());
-        assert_eq!(get_staged_diff(root).await.unwrap(), "");
-        assert_eq!(
-            get_file_diff(root, Path::new("README.md")).await.unwrap(),
-            ""
-        );
-
-        write_file(root, "README.md", "changed line\n");
-        assert!(has_uncommitted_changes(root).await.unwrap());
-        let diff = get_file_diff(root, Path::new("README.md")).await.unwrap();
-        assert!(diff.contains("-test repo"), "{diff}");
-        assert!(diff.contains("+changed line"), "{diff}");
-        assert_eq!(get_staged_diff(root).await.unwrap(), "");
-
-        git(root, &["add", "README.md"]);
-        let staged = get_staged_diff(root).await.unwrap();
-        assert!(staged.contains("+changed line"), "{staged}");
-        assert_eq!(
-            get_file_diff(root, Path::new("README.md")).await.unwrap(),
-            ""
-        );
-    }
-
-    #[tokio::test]
-    async fn has_uncommitted_changes_sees_untracked_files() {
-        let repo = temp_git_repo();
-        write_file(repo.path(), "new.txt", "n\n");
-        assert!(has_uncommitted_changes(repo.path()).await.unwrap());
     }
 
     #[tokio::test]
